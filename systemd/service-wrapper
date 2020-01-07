@@ -1,0 +1,11 @@
+[Unit]
+Description={{description}}
+
+[Service]
+KillMode=process
+ExecStart={{execpath}} {{script}} {{{wrappercode}}}
+Restart=always
+SyslogIdentifier={{label}}
+
+[Install]
+WantedBy=multi-user.target
