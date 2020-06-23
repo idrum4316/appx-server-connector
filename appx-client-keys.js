@@ -6,12 +6,22 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-keys.js,v 1.70 2018/11/08 16:48:49 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-keys.js,v 1.75 2020/01/15 15:35:44 m.karimi Exp $";
 
 //keep menu open
 var stick = false;
 var dtstick = false;
 
+function isNumericKey(ke) {
+    if( ke.which >=48 && ke.which <=57 ) {
+	return true;
+    }
+    if( ke.which >=96 && ke.which <=105 ) {
+	return true;
+    }
+    return false;
+}
+	
 //http://stackoverflow.com/a/3533099
 function enterAltCtrlTextBreak(ke) {
     if (ke != null && (ke.which == 10 || ke.which == 13) && ke.target.type == "textarea") {
@@ -132,8 +142,8 @@ function sendkey(ke) {
     appxstarttimeout();
     appx_session.valueTimerStart();
     try {
-        if ((ke.currentTarget.activeElement !== undefined && $(ke.currentTarget.activeElement.offsetParent).parents(".searchFilter").length > 0) || ($("#cke_clone").length > 0) || 
-            $(ke.currentTarget.activeElement).hasClass("ui-pg-input")) {
+        if ((ke.currentTarget!== undefined && ke.currentTarget.activeElement !== undefined && $(ke.currentTarget.activeElement.offsetParent).parents(".searchFilter").length > 0) || ($("#cke_clone").length > 0) || 
+        (ke.currentTarget!== undefined && $(ke.currentTarget.activeElement).hasClass("ui-pg-input")) ) {
             return;                
         }
         ke = fixKeyEvent(ke);
@@ -154,7 +164,7 @@ function sendkey(ke) {
             }
 
             if (optionTriggered > 0) { //cancel input options when key != 0-9
-                if (ke.which != appx_session.getProp("mapOptionKey") && (ke.which < 48 || ke.which > 57)) {
+                if (ke.which != appx_session.getProp("mapOptionKey") && !isNumericKey(ke)) {
                     optionTriggered = 0;
                     digits = [];
                 }
@@ -286,7 +296,7 @@ function sendkey(ke) {
                                 $(".default").click();
                                 ret = false;
                             }
-                            else if (ke.currentTarget.activeElement.offsetParent == null || ke.currentTarget.activeElement.offsetParent.className != "ui-search-input") {
+                            else if ( ke.currentTarget !== undefined && ke.currentTarget.activeElement && (ke.currentTarget.activeElement.offsetParent == null || ke.currentTarget.activeElement.offsetParent.className != "ui-search-input")) {
                                 opt = OPT_ENTER;
                             }
                         }
@@ -339,13 +349,23 @@ function sendkey(ke) {
                     case 55: //7
                     case 56: //8
                     case 57: //9
+                    case 96:  //0 keypad
+                    case 97:  //1 keypad
+                    case 98:  //2 keypad
+                    case 99:  //3 keypad
+                    case 100: //4 keypad
+                    case 101: //5 keypad
+                    case 102: //6 keypad
+                    case 103: //7 keypad
+                    case 104: //8 keypad
+                    case 105: //9 keypad
                         if (ke.ctrlKey) {
-                            if (ke.which == 49) opt = OPT_DIR_PROC_1;
-                            else if (ke.which == 50) opt = OPT_DIR_PROC_2;
+                            if (ke.which == 49 || ke.which == 97) opt = OPT_DIR_PROC_1;
+                            else if (ke.which == 50 || ke.which == 98) opt = OPT_DIR_PROC_2;
                         }
                         else if (optionTriggered > 0) {
                             //pressed option key(s) followed by number(s)
-                            digits.push(parseInt(String.fromCharCode(ke.which)));
+                            digits.push(parseInt(ke.key));
                             if (--optionTriggered == 0) {
                                 opt = parseInt(digits.join(''));
                                 digits = [];
@@ -356,14 +376,20 @@ function sendkey(ke) {
                     case 77: //m
                         if (ke.ctrlKey) opt = OPT_SHOW_MSG;
                         break;
-                    case 112: //F1 = 276
+                    case 112: //F1 = 276 
                         opt = OPT_HELP_ITM;
                         break;
                     case 113: //F2 = 257
+			appxSnapshotScanCursor();
                         opt = OPT_SCAN;
                         break;
                     case 114: //F3 = 259
-                        opt = OPT_SLCT_KEY;
+                        if(ke.ctrlKey){
+                            opt = OPT_SET_ATR
+                        }
+                        else{
+                            opt = OPT_SLCT_KEY;
+                        }
                         break;
                     case 115: //F4 = 260
                         opt = OPT_PREV_IMG;
@@ -644,7 +670,7 @@ var OPT_INQ_MODE /*     */ = (OPT_BASE + 11); //Inquire Mode
 var OPT_CHG_MODE /*     */ = (OPT_BASE + 12); //Change Mode
 var OPT_REDSPL_TXT /*   */ = (OPT_BASE + 13); //Redisplay screen
 var OPT_KEY_ENTRY /*    */ = (OPT_BASE + 14);
-//var OPT_SET_ATR          = (OPT_BASE + 15); //Set Item Attr
+var OPT_SET_ATR            = (OPT_BASE + 15); //Set Item Attr
 var OPT_DIR_PROC_1 /*   */ = (OPT_BASE + 16); //Direct Proc 1
 var OPT_DIR_PROC_2 /*   */ = (OPT_BASE + 17); //Direct Proc 2
 var OPT_END /*          */ = (OPT_BASE + 18); //End
@@ -772,3 +798,53 @@ var OPT_PACK_DISPLAY  = (OPT_GUI_BASE +  4);  //Key Entry trigger
 var OPT_NEW_INSTANCE  = (OPT_GUI_BASE +  5);  //Launch new instance
 */
 var OPT_NULL = 65535;
+
+/*
+**  Client Server Feature Mask Flags
+*/
+/*
+var TMNET_FEATURE_CLI_TOKEN_SCANLIST      = 0x00000001;
+var TMNET_FEATURE_PASS_PROC_ID_ON_INIT    = 0x00000002;
+var TMNET_FEATURE_LOAD_KEYMAP_FROM_SERVER = 0x00000004;
+var TMNET_FEATURE_RUN_VIA_RT_LOAD         = 0x00000008;
+var TMNET_FEATURE_DATA_PALETTE_SUPPORT    = 0x00000010;
+var TMNET_FEATURE_DOWNLOAD_FILE           = 0x00000020;
+var TMNET_FEATURE_UPLOAD_FILE             = 0x00000040;
+var TMNET_FEATURE_ADD_FIELD               = 0x00000080;
+var TMNET_FEATURE_GET_LANG_BLK            = 0x00000100;
+var TMNET_FEATURE_BUTTONS                 = 0x00000200;
+var TMNET_FEATURE_CLI_PRINT               = 0x00000400;
+var TMNET_FEATURE_REL41P1_SELECT          = 0x00000800;
+var TMNET_FEATURE_REL41P2_TOKENS          = 0x00001000;
+var TMNET_FEATURE_FILTER_BOXES            = 0x00002000;
+var TMNET_FEATURE_DATE_CHOOSER            = 0x00004000; 
+var TMNET_FEATURE_AUTO_MENUS              = 0x00008000;
+var TMNET_FEATURE_BOX_ITM_WDGT            = 0x00010000; // send box and itm widgets 
+var TMNET_FEATURE_GUI_EDIT_CMD            = 0x00020000; // send box and itm widgets 
+var TMNET_FEATURE_LONG_DATA               = 0x00040000; // send box and itm widgets 
+var TMNET_FEATURE_TOKEN_SCANS             = 0x00080000; 
+var TMNET_FEATURE_JOE2_GUI_CLIENT         = 0x00100000; // java client  
+var TMNET_FEATURE_HTML5_MULTI_MSGS        = 0x00100000; // html5 client 
+var TMNET_FEATURE_NO_END_PARAG_CNV        = 0x00200000; 
+var TMNET_FEATURE_CLIENT_CLIPBOARD        = 0x00400000; 
+var TMNET_FEATURE_CONSTANTS_EXCH          = 0x00800000; 
+var TMNET_FEATURE_SERVER_TOOLBARS         = 0x01000000; 
+var TMNET_FEATURE_CLIENT_PATH_EXPANSION   = 0x02000000; 
+var TMNET_FEATURE_ALPHA_CHANNEL_COLORS    = 0x04000000; 
+var TMNET_FEATURE_THIS_IS_THE_JAVA_CLIENT = 0x08000000; 
+var TMNET_FEATURE_SERVER_PULLDOWNS        = 0x10000000;
+var TMNET_FEATURE_LOGIN_FAILURE_MESSAGE   = 0x20000000;
+var TMNET_FEATURE_TABLE_WIDGETS           = 0x40000000;
+var TMNET_FEATURE_FEATURE2                = 0x80000000;
+
+var TMNET_FEATURE2_RECONNECT              = 0x00000001;
+var TMNET_FEATURE2_INTERRUPT              = 0x00000002;
+var TMNET_FEATURE2_SCROLLPANE_RESIZE      = 0x00000004;
+var TMNET_FEATURE2_TABLE_SORTDATA         = 0x00000008;
+var TMNET_FEATURE2_NO_SCREEN_DATA         = 0x00000010;
+var TMNET_FEATURE2_SEND_ALL_ITEMS         = 0x00000020;
+var TMNET_FEATURE2_HTML5_VERSION_1        = 0x00000040;
+var TMNET_FEATURE2_PUSH_AND_OPEN          = 0x00000080; 
+var TMNET_FEATURE2_UNICODE_ENGINE         = 0x00000100;
+*/
+var TMNET_FEATURE2_CUSTOMIZABLE_TABLE_HEADERS = 0x00000200;

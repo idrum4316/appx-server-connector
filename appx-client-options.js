@@ -1,4 +1,4 @@
-﻿
+
 /*********************************************************************
  **
  **   server/appx-client-options.js - Client Option processing
@@ -7,14 +7,14 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-options.js,v 1.110 2018/10/05 14:28:25 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-options.js,v 1.114 2019/12/18 16:01:32 m.karimi Exp $";
 
 // FIXME:  need a way to save to disk and reload if user deletes Browser cache
 // thinking maybe allow to download and save a backup, and a way to upload and
 // set options from a backup
 
-var appxServerClientVersionStr = "6.0.0.19011401";
-var appxServerClientVersionNum = 60000.19011401;
+var appxServerClientVersionStr = "6.0.0.20040817";
+var appxServerClientVersionNum = 60000.20040817;
 
 var appxSortedOptions = {};
 var appxSortedOptionsArray = [];
@@ -251,7 +251,7 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Options", "toolbarIconSize", false, true, true, false, false, false, "string", iconSizeList, null, "Medium", null, null, "(Not Implemented) - Toolbar Icon Size", true]
         }, {
-            "prop": ["Options", "toolbarStyle", false, true, true, false, false, false, "string", iconStyleList, null, "Icons", null, null, "(Not Implemented) - Toolbar Button Style", true]
+            "prop": ["Options", "toolbarStyle", false, true, true, false, false, false, "string", iconStyleList, null, "Both", null, null, "(Not Implemented) - Toolbar Button Style", true]
         }, {
             "prop": ["Options", "textReverseEnterKey", false, true, true, false, false, false, "boolean", null, null, false, null, null, "(Not Implemented) - Pressing ENTER in a Text Field performs a Newline only, Ctrl-Enter triggers button", true]
         }, {
@@ -275,6 +275,8 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Options", "doubleBufferScreen", true, false, true, false, false, false, "boolean", null, null, true, null, null, "Wait for images to load before showing screens", false] //##DELETEUSERPREFS##
         }, {
+            "prop": ["Options", "useTableForScan", false, true, true, false, false, false, "boolean", null, null, false, null, null, "Use the scan screen with table widget", false]
+        }, {
             "prop": ["UIDefaults", "[UIDefaults]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {
             "prop": ["UIDefaults", "showMessageDialogs", false, true, false, false, false, false, "boolean", null, null, false, null, null, "(Not Implemented) - Show MESSAGE text in a popup dialog", true]
@@ -297,6 +299,8 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["LocalPaths", "dataCachePath", false, false, false, false, true, true, "string", null, null, "$(cachePath)" + appx_session.fileseparatorchar + "Data", null, null, "Data cache path directory for the current session", false]
         }, {
+            "prop": ["LocalPaths", "printCachePath", false, false, false, false, true, true, "string", null, null, "$(cachePath)" + appx_session.fileseparatorchar + "Print", null, null, "Print cache path directory for the current session", false]
+        }, {
             "prop": ["Startup", "[Startup]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {
             "prop": ["Startup", "initialFontSize", false, false, false, false, false, false, "integer", null, null, 14, null, null, "Base font size to use on startup", false]
@@ -315,9 +319,9 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Startup", "remoteUser", false, false, false, false, false, false, "string", null, null, null, "user", null, "(Not Implemented) - Remote login user id", true]
         }, {
-            "prop": ["Startup", "screenRows", false, false, true, false, false, false, "integer", null, null, 21, "rows", null, "Screen grid cell rows", true]
+            "prop": ["Startup", "screenRows", false, false, true, false, false, false, "integer", null, null, 35, "rows", null, "Screen grid cell rows", true]
         }, {
-            "prop": ["Startup", "screenColumns", false, false, true, false, false, false, "integer", null, null, 80, "cols", null, "Screen grid cell columns", true]
+            "prop": ["Startup", "screenColumns", false, false, true, false, false, false, "integer", null, null, 144, "cols", null, "Screen grid cell columns", true]
         }, {
             "prop": ["Startup", "showDateScans", false, false, false, false, false, false, "boolean", null, null, false, "datescan", true, "(Not Implemented) - Show scan buttons on date fields", true]
         }, {
@@ -333,6 +337,8 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Startup", "mergeBoxes", true, true, false, false, false, false, "boolean", null, null, false, null, null, "Merge boxes that touch top and two sides of screen", false]
         }, {
+            "prop": ["Startup", "widgetFontAdjust", false, false, false, false, false, false, "integer", null, null, 0, null, null, "Font scaling adjustment for widgets", false]
+		}, {
             "prop": ["Constants", "[Constants]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {
             "prop": ["Constants", "serverConnectorVersionStr", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]

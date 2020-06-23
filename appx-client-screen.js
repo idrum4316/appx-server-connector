@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-screen.js,v 1.453 2019/01/03 01:07:07 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-screen.js,v 1.485 2020/03/18 20:00:22 m.karimi Exp $";
 
 "use strict";
 var screenflipped = false;
@@ -15,7 +15,7 @@ var inProgressBox = null;
 
 function getInputElement($tag) {
     if ($($tag).hasClass("appxdatefield") && $($tag).find(".appxdatevalue")) {
-	$tag = $($tag).find(".appxdatevalue");
+        $tag = $($tag).find(".appxdatevalue");
     }
 
     return($tag);
@@ -23,7 +23,7 @@ function getInputElement($tag) {
 
 function setInputFocus($tag) {
     if ($($tag).hasClass("appxdatefield") && $($tag).find(".appxdatevalue")) {
-	$tag = $($tag).find(".appxdatevalue");
+        $tag = $($tag).find(".appxdatevalue");
     }
 
     $tag.focus();
@@ -41,15 +41,19 @@ function appxmsgshandler(x) {
             switch (msg.severity) {
                 case 0:
                     $msghtml.addClass("status-msg-info");
+                    appxloadurlhandler( {'data':'$messagebeep:'});   // Bug#4447 - no sound on errors, warnings
                     break;
                 case 1:
                     $msghtml.addClass("status-msg-warning");
+                    appxloadurlhandler( {'data':'$warningbeep:'});   // Bug#4447 - no sound on errors, warnings
                     break;
                 case 2:
                     $msghtml.addClass("status-msg-error");
+                    appxloadurlhandler( {'data':'$errorbeep:'});     // Bug#4447 - no sound on errors, warnings
                     break;
                 case 3:
                     $msghtml.addClass("status-msg-cancel");
+                    appxloadurlhandler( {'data':'$cancelbeep:'});    // Bug#4447 - no sound on errors, warnings
                     break;
             }
             appx_session.msgs.push($msghtml);
@@ -248,7 +252,7 @@ function appxApplyStylesSignature() {
                         baseZ: 999999,
                         fadeIn: 0,
                     });
-                    
+
                     function createBlob(callback) {
                         if (HTMLCanvasElement.prototype.toBlob !== undefined) {
                             /*toBlob for all browsers except IE/Edge... Microsoft likes to create their own standards.*/
@@ -273,7 +277,7 @@ function appxApplyStylesSignature() {
                         });
                     });
                 }
-               
+
             }));
 
             /*Clear signature pad*/
@@ -294,10 +298,18 @@ function appxApplyStylesSignature() {
 
 function appxApplyStylesTitleButtons() {
     $.each($("#screenBuf .appx-title-button-help"), function $_each(k, el0) {
+        if( $(el0).parents(".appx-active-box").length === 0 ) {
+            $(el0).prop("disabled",true);
+        }
         $(el0).click(function $_click(event) {
+            $(".appx-active-box").addClass("appx-help-cursor");
             event.preventDefault();
             appx_session.processhelp = true;
-            $.each($("#screenBuf .appxfield"), function $_each(k, e10) {
+            $.each($(".appx-active-box .button"), function $_each(k, e10) {
+                $(e10).addClass("appx-help-cursor");
+            });
+            $.each($(".appx-active-box .appxfield"), function $_each(k, e10) {
+                $(e10).addClass("appx-help-cursor");
                 $(e10).click(function $_click(event) {
                     var col = $(this).data("col");
                     var row = $(this).data("row");
@@ -313,12 +325,18 @@ function appxApplyStylesTitleButtons() {
         });
     });
     $.each($("#screenBuf .appx-title-button-ok"), function $_each(k, el0) {
+        if( $(el0).parents(".appx-active-box").length === 0 ) {
+            $(el0).prop("disabled",true);
+        }
         $(el0).click(function $_click(event) {
             event.preventDefault();
             appxwidgetcallback(OPT_ENTER);
         });
     });
     $.each($("#screenBuf .appx-title-button-close"), function $_each(k, el0) {
+        if( $(el0).parents(".appx-active-box").length === 0 ) {
+            $(el0).prop("disabled",true);
+        }
         $(el0).click(function $_click(event) {
             event.preventDefault();
             appxwidgetcallback(OPT_END);
@@ -346,6 +364,30 @@ function appxApplyStylesCheckbox() {
                 }
             }
             else {
+                // Bug#4415 - checkbox attributes not previously assigned
+                var el = $(el0);
+                switch (el.attr('value')) {
+                    case 'Y':
+                    case '1':
+                        el.data('checked', 2);
+                        el.prop('indeterminate', false);
+                        el.prop('checked', true);
+                        el.val("Y");
+                        break;
+                    case 'N':
+                    case '0':
+                        el.data('checked', 0);
+                        el.prop('indeterminate', false);
+                        el.prop('checked', false);
+                        el.val("N");
+                        break;
+                    default:
+                        el.data('checked', 2);
+                        el.prop('indeterminate', true);
+                        el.prop('checked', false);
+                        el.val(" ");
+                }
+
                 $(el0).data('checked', $(el0).checked)
                     .keypress(function $_keypress(event) {
                         var el = $(this);
@@ -378,7 +420,7 @@ function appxApplyStylesCheckbox() {
                                 el.addClass("dirty");
                                 el.change();
                                 break;
-                            // indeterminate, going checked  
+                            // indeterminate, going checked
                             case 1:
                                 el.data('checked', 2);
                                 el.prop('indeterminate', false);
@@ -386,7 +428,7 @@ function appxApplyStylesCheckbox() {
                                 el.val("Y");
                                 el.addClass("dirty");
                                 break;
-                            // checked, going unchecked  
+                            // checked, going unchecked
                             default:
                                 el.data('checked', 0);
                                 el.prop('indeterminate', false);
@@ -526,11 +568,6 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
             var $ckElement = $(el[els]);
             if ($ckElement.attr("id").indexOf("stale") !== -1) {
                 return;
-            };
-            if ($ckElement.attr("disabled") != "disabled") {
-                if ($ckElement.height() > 100) {
-                    $ckElement.css("height", (($ckElement.height() - 100) + "px"));
-                }
             }
 
             $ckElement.removeClass("ckeditor");
@@ -543,59 +580,222 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
             tWidth = parseInt(tWidth.substring(0, (tWidth.length - 2)));
             tHeight = parseInt(tHeight.substring(0, (tHeight.length - 2)));
 
-            /*If element is not long enough to hold CKEDITOR element correctly then
-            **we display text area and when entering change mode, put a button next
-            **element that allows user to popup dialog box with CKEDITOR inside*/
-            if (tHeight <= (appx_session.rowHeightPx * 5)) {
+            /*
+            ** If element is not long enough to hold CKEDITOR element correctly or
+            ** show decoration is set to no then
+            ** we display text area and when entering change mode, put a button next
+            ** element that allows user to popup dialog box with CKEDITOR inside
+            */
+            if (tHeight <= (appx_session.rowHeightPx * 5) || $ckElement.attr("decoration") == "no") {
+
+                /*if a custom file is pushed down from appx we use that, otherwise we use the
+                **config.js file that is in the ckeditor directory.  */
+                var config = {};
+                config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
+                if (config.customConfig === undefined) {
+                    config.customConfig = '../custom/appx-ckeditor-config.js';
+                }
+                config.wordcount = {
+                    // Whether or not you want to show the Paragraphs Count
+                    showParagraphs: false,
+                    // Whether or not you want to show the Word Count
+                    showWordCount: false,
+                    // Whether or not you want to show the Char Count
+                    showCharCount: true,
+                    // Whether or not you want to count Spaces as Chars
+                    countSpacesAsChars: true,
+                    // Whether or not to include Html chars in the Char Count
+                    countHTML: true,
+                    // Whether or not to include Line Breaks in the Char Count
+                    countLineBreaks: true,
+                    // Maximum allowed Word Count, -1 is default for unlimited
+                    maxWordCount: -1,
+                    // Maximum allowed Char Count, -1 is default for unlimited
+                    maxCharCount: $ckElement.attr("maxlength"),
+                    // Maximum allowed Paragraphs Count, -1 is default for unlimited
+                    maxParagraphs: -1,
+                    // How long to show the 'paste' warning, 0 is default for not auto-closing the notification
+                    pasteWarningDuration: 0
+                };
+                config.width = tWidth;
+                config.height = tHeight;
+                
+                //now initialize the ckeditor with no toolbar for appxscreen
+                config.removePlugins = ["toolbar", "clipboard", "pastetext", "pastetools", 
+                                            "tableselection", "widget", "uploadwidget", "uploadimage",
+                                            "pastefromword", "pastefromgdocs"];
+                
+                if ($ckElement.attr("disabled") == "disabled") {
+                    config.removePlugins.push("elementspath");
+                    config.removePlugins.push("wordcount");
+                    config.resize_enabled = false;
+                }
+                var mainEditor = CKEDITOR.replace($ckElement.attr("id"), config);
+                $ckElement.attr("name", mainEditor.name);
+                var funcVal = els;
+                mainEditor.on('instanceReady', function editor_onInstanceReady() {
+                    this.ui.contentsElement.clientHeight = tHeight;
+                    $("#cke_" + $(el[funcVal]).attr("id")).find("iframe").attr("title", "");
+                    $("#cke_" + $(el[funcVal]).attr("id")).css({
+                        "position": "absolute",
+                        "top": tTop + "px",
+                        "left": tLeft + "px",
+                        "z-index": $(el[funcVal]).css("z-index")
+                    });
+                    var footerbar  =  $("#cke_" + $(el[funcVal]).attr("id")+" .cke_bottom");
+
+                    /*hide footerbar instead of removing it so we can still enforce character limit*/
+                    if(footerbar){
+                        footerbar.css({"display":"none"});
+                    }
+                    
+                    this.resize(tWidth, tHeight, true);
+                });
+                mainEditor.on('paste', function (event) {
+                    validateInputText(event.data.dataValue, $ckElement.data("unicode"));
+                });
+                // when user closes the notification this event happens
+                //Fixing the issue with 'close' tooltip stays visible
+                mainEditor.on('notificationHide', function (event){
+                    var tooltipDiv = document.querySelector("div.ui-tooltip");
+                    if(tooltipDiv != null){
+                        tooltipDiv.remove();
+                    }
+                });
+
+                /*
+                ** Event for when user presses a key inside of html editor
+                **
+                */
+                mainEditor.on( 'key', function(event){ 
+                    var domEvent = event.data.domEvent.$;
+                    //don't send arrow key events to sendkey function
+                    if(domEvent.which >= 37 && domEvent.which <= 40){
+                        event.data.domEvent.stopPropagation();
+                    }
+                    //don't send return key to sendkey function if htmleditor is not in rtead only mode
+                    else if( (domEvent.which == 10 || domEvent.which == 13) && (event.editor.element.$.getAttribute("disabled") == null)){
+                        event.data.domEvent.stopPropagation();
+                    }
+                    else{
+                        /* 
+                        ** event is a ckeditor event. It also has the dom event
+                        ** we want to pass the dom event (event.data.domEvent.$) to sendkey function to
+                        ** intercept appx special shortcuts 
+                        */
+                        var ret = sendkey(domEvent);
+                        //if appx intercepted the key event don't pass it to html editor
+                        if(ret == false){
+                            event.cancel();
+                        }
+                    }
+                });
+                mainEditor.resetDirty();
+
                 $ckElement.addClass("button_cke");
                 var $ckeButton = $('<button>');
                 $ckeButton.attr("id", "CKE_Button");
                 $ckeButton.val("a");
                 $ckeButton.text("a");
                 $ckeButton.click(function ckeButton_click() {
-                    $ckElement = $(".button_cke");
+                    var $element = $ckElement;
+                    var popup_height = tHeight;
+                    var popup_width = tWidth;
+                    //dont let the width to be less than 600px on the popup
+                    if(popup_width < 600){
+                        popup_width = 600;
+                    }
+                    // Minus 3 to not overlap the status bar and footer bar
+                    if((popup_height * 5) > ((appx_session.screenrows - 3)  * appx_session.rowHeightPx)){
+                        popup_height = (appx_session.screenrows - 3) * appx_session.rowHeightPx;
+                    }
+                    else{
+                        popup_height = popup_height * 5;
+                    }
                     /*If in inquiry mode we do not display ckeditor toolbar. Else if a custom
-                    **file is pushed down from appx we use that, otherwise we use the 
+                    **file is pushed down from appx we use that, otherwise we use the
                     **config.js file that is in the ckeditor directory for toolbar items.*/
                     var config = {};
-                    config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
+                    config.customConfig = AppxResource.cache[$element.data("editorConfig")];
                     if (config.customConfig === undefined) {
                         config.customConfig = '../custom/appx-ckeditor-config.js';
                     }
-                    config.width = tWidth;
-                    var $elementClone = $ckElement.clone();
+                    /* 
+                    ** Add plugins to limit the number of characters user can add to html client 
+                    */
+                    config.wordcount = {
+                        // Whether or not you want to show the Paragraphs Count
+                        showParagraphs: false,
+                        // Whether or not you want to show the Word Count
+                        showWordCount: false,
+                        // Whether or not you want to show the Char Count
+                        showCharCount: true,
+                        // Whether or not you want to count Spaces as Chars
+                        countSpacesAsChars: true,
+                        // Whether or not to include Html chars in the Char Count
+                        countHTML: true,
+                        // Whether or not to include Line Breaks in the Char Count
+                        countLineBreaks: true,
+                        // Maximum allowed Word Count, -1 is default for unlimited
+                        maxWordCount: -1,
+                        // Maximum allowed Char Count, -1 is default for unlimited
+                        maxCharCount: $element.attr("maxlength"),
+                        // Maximum allowed Paragraphs Count, -1 is default for unlimited
+                        maxParagraphs: -1,
+                        // How long to show the 'paste' warning, 0 is default for not auto-closing the notification
+                        pasteWarningDuration: 0,
+                        // Add filter to add or remove element before counting (see CKEDITOR.htmlParser.filter), Default value : null (no filter)
+                        /*filter: new CKEDITOR.htmlParser.filter({
+                            elements: {
+                                div: function( element ) {
+                                    if(element.attributes.class == 'mediaembed') {
+                                        return false;
+                                    }
+                                }
+                            }
+                        })*/
+                    };
+                    config.width = popup_width;
+                    // because the popup is in modal mode, we need this so the floating (menu lists) 
+                    // frames open on top of the modal not under it
+                    config.baseFloatZIndex = 1000001;
+                    var $elementClone = $element.clone();
                     var $dialogDiv = $('<div>');
-                    $dialogDiv.hide().appendTo($ckElement.parent())
+                    $dialogDiv.hide().appendTo($element.parent())
                     $elementClone.hide().appendTo($dialogDiv);
-                    $elementClone.css("height", (tHeight * 5)+"px");
-                    $elementClone.attr("id", "clone");
+                    $elementClone.css("height", (popup_height)+"px");
+                    $elementClone.attr("id", "clone_" + $element.attr("id"));
                     var editor = CKEDITOR.replace($elementClone.attr("id"), config);
                     $elementClone.attr("name", editor.name);
                     editor.on('instanceReady', function editor_onInstanceReady() {
                         $("#cke_" + $elementClone.attr("id")).find("iframe").attr("title", "");
                         $("#cke_" + $elementClone.attr("id")).css({
                             "position": "absolute",
-                            "height": $elementClone.css("height"),
+                            //"height": $elementClone.css("height"),
                             "z-index": $elementClone.css("z-index")
                         });
                         setTimeout(function setTimeoutCallback() {
-                            editor.resize(
-                                (parseInt(tWidth) - 4),
-                                (parseInt(tHeight*5) + 2), false);
+                            editor.resize( popup_width, popup_height, false);
                         }, 0);
+                    });
+                    editor.on('paste', function (event) {
+                        validateInputText(event.data.dataValue, $element.data("unicode"));
                     });
 
                     editor.resetDirty();
-                    $ckElement.hide();
+                    $element.hide();
                     /*Create dialog popup for CKEDITOR*/
                     $dialogDiv.dialog({
-                        title: "CKEDITOR",
+                        title: "HTML EDITOR",
                         position: { "of": "#appx_main_container" },
-                        minWidth: (tWidth + 100),
-                        height: ((tHeight * 6) + 50),
+                        minWidth: ( popup_width + 30),
+                        height: (popup_height + 130),
+                        modal: true,
+                        closeOnEscape: false,
                         buttons: {
                             Ok: function () {
-                                $ckElement.val(editor.getData());
+                                $element.val(editor.getData());
+                                mainEditor.setData(editor.getData());
                                 $(this).dialog("close");
                             },
                             Cancel: function () {
@@ -604,39 +804,69 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                         },
                         close: function () {
                             $elementClone.remove();
-                            $ckElement.show();
+                            $element.show();
                             editor.destroy();
+                        },
+                        //This is to prevent keystrokes to go back to appx process
+                        open: function(){
+                            $(this).dialog("widget").on("keydown", function(event){ 
+                                                                                    event.stopPropagation();
+                                                                                    });
                         }
-                    });
+                    })
                 });
                 $ckeButton.css({
                     "position": "absolute",
                     "top": tTop + "px",
                     "left": (tLeft + tWidth + 5) + "px"
                 });
-                if ($ckElement.hasClass("button_cke") && ($("#appx_status_mode").text() === "Chg")){
+                if ($ckElement.hasClass("button_cke") && $ckElement.hasClass("appx-modifiable")){
                     $ckeButton.appendTo($ckElement.parent());
                 }
 
             } else {
                 /*If in inquiry mode we do not display ckeditor toolbar. Else if a custom
-                **file is pushed down from appx we use that, otherwise we use the 
+                **file is pushed down from appx we use that, otherwise we use the
                 **config.js file that is in the ckeditor directory for toolbar items.  */
                 var config = {};
                 var editor = {};
-                if ($ckElement.attr("disabled") == "disabled") {
-                    config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
-                    config.removePlugins = "elementspath,toolbar";
-                    config.allowedContent = true;
-                    config.resize_enabled = false;
-                } else {
-                    config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
-                    if (config.customConfig === undefined) {
-                        config.customConfig = '../custom/appx-ckeditor-config.js';
-                    }
+                config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
+                if (config.customConfig === undefined) {
+                    config.customConfig = '../custom/appx-ckeditor-config.js';
                 }
-                config.width = tWidth + "px";
-                config.height = tHeight + "px";
+                config.wordcount = {
+                    // Whether or not you want to show the Paragraphs Count
+                    showParagraphs: false,
+                    // Whether or not you want to show the Word Count
+                    showWordCount: false,
+                    // Whether or not you want to show the Char Count
+                    showCharCount: true,
+                    // Whether or not you want to count Spaces as Chars
+                    countSpacesAsChars: true,
+                    // Whether or not to include Html chars in the Char Count
+                    countHTML: true,
+                    // Whether or not to include Line Breaks in the Char Count
+                    countLineBreaks: true,
+                    // Maximum allowed Word Count, -1 is default for unlimited
+                    maxWordCount: -1,
+                    // Maximum allowed Char Count, -1 is default for unlimited
+                    maxCharCount: $ckElement.attr("maxlength"),
+                    // Maximum allowed Paragraphs Count, -1 is default for unlimited
+                    maxParagraphs: -1,
+                    // How long to show the 'paste' warning, 0 is default for not auto-closing the notification
+                    pasteWarningDuration: 0
+                };
+                config.width = tWidth;
+                config.height = tHeight;
+                //Hide toolbar and footerbar by removing their plugins
+                //Note that you also need to remove all dependent plugings as well
+                if ($ckElement.attr("disabled") == "disabled") {
+                    config.removePlugins = ["toolbar", "elementspath", "wordcount", "clipboard", "pastetext", "pastetools", 
+                                            "tableselection", "widget", "uploadwidget", "uploadimage",
+                                            "pastefromword", "pastefromgdocs"];
+                    config.resize_enabled = false;
+                } 
+                
                 editor = CKEDITOR.replace($ckElement.attr("id"), config);
                 $ckElement.attr("name", editor.name);
                 var funcVal = els;
@@ -649,10 +879,48 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                         "left": tLeft + "px",
                         "z-index": $(el[funcVal]).css("z-index")
                     });
+                    this.resize(tWidth, tHeight, false);
                 });
                 editor.on('paste', function (event) {
                     validateInputText(event.data.dataValue, $ckElement.data("unicode"));
                 });
+                // when user closes the notification this event happens
+                //Fixing the issue with 'close' tooltip stays visible
+                 editor.on('notificationHide', function (event){
+                    var tooltipDiv = document.querySelector("div.ui-tooltip");
+                    if(tooltipDiv != null){
+                        tooltipDiv.remove();
+                    }
+                 });
+
+                 /*
+                 ** Event for when user presses a key inside of html editor
+                 **
+                 */
+                 editor.on( 'key', function(event){ 
+                    var domEvent = event.data.domEvent.$;
+                    //don't send arrow key events to sendkey function
+                    if(domEvent.which >= 37 && domEvent.which <= 40){
+                        event.data.domEvent.stopPropagation();
+                    }
+                    //don't send return key to sendkey function if htmleditor is not in rtead only mode
+                    else if( (domEvent.which == 10 || domEvent.which == 13) && (event.editor.element.$.getAttribute("disabled") == null)){
+                        event.data.domEvent.stopPropagation();
+                    }
+                    else{
+                        /* 
+                        ** event is a ckeditor event. It also has the dom event
+                        ** we want to pass the dom event (event.data.domEvent.$) to sendkey function to
+                        ** intercept appx special shortcuts 
+                        */
+                        var ret = sendkey(domEvent);
+                        //if appx intercepted the key event don't pass it to html editor
+                        if(ret == false){
+                            event.cancel();
+                        }
+                    }
+                 });
+
                 editor.resetDirty();
             }
         }
@@ -677,7 +945,7 @@ function appxApplyStylesEditor() {
             }
         }
         $.each($("#screenBuf .ckeditor"), function $_each(i, el) {
-            if (Object.getOwnPropertyNames(CKEDITOR.instances).length === 0){
+            if (!CKEDITOR.instances.hasOwnProperty(el.id)){
                 appxApplyStyleEditor(el, false);
             }
         });
@@ -712,7 +980,38 @@ function appxApplyStylesHtmlViewer() {
 function appxApplyStylesTable() {
     try {
         $.each($("#screenBuf .appxtablewidget"), function $_each(i, el) {
-		createGridMongo( {}, $(el).attr("id") );
+            var appx_table = AppxTable.getAppxTable($(el).data("tableHashKey"));
+            // create grid if we have received the userPrefs for this table,
+            // if not, wait 250ms and and try again. Try this 4 times and if we still didn't get the preferences then use the default
+            if(appx_table._prefsDataReceived == true){
+                createGridMongo( {}, $(el).attr("id") );
+            }
+            else{
+                setTimeout(function(){
+                    if(appx_table._prefsDataReceived == true){
+                        createGridMongo( {}, $(el).attr("id") );
+                    }
+                    else{
+                        setTimeout(function(){
+                            if(appx_table._prefsDataReceived == true){
+                                createGridMongo( {}, $(el).attr("id") );
+                            }
+                            else{
+                                setTimeout(function(){
+                                    if(appx_table._prefsDataReceived == true){
+                                        createGridMongo( {}, $(el).attr("id") );
+                                    }
+                                    else{
+                                        setTimeout(function(){
+                                            createGridMongo( {}, $(el).attr("id") );
+                                        }, 250);
+                                    }
+                                }, 250);
+                            }
+                        }, 250);
+                    }
+                }, 250);
+            }
         });
     }
     catch (ex) {
@@ -986,11 +1285,11 @@ var _boxcur = null; //appx_session?
 
 function appxHandleEmBox() {
     for (var i = 0; i < appx_session.current_show.boxes.length; i++) {
-	var box = appx_session.current_show.boxes[i];
-	if (appxIsEmBuild(box)) {
-	    $("#appx_status_date").html(box.widget.wLabel);
-	    return true;
-	}
+        var box = appx_session.current_show.boxes[i];
+        if (appxIsEmBuild(box)) {
+            $("#appx_status_date").html(box.widget.wLabel);
+            return true;
+        }
     }
     return false;
 }
@@ -1077,7 +1376,7 @@ function appxshowboxes() {
                     if (box2.end_column >= box1.end_column) {
                         if ((box2.begin_row - 1) <= box1.end_row && box2.end_row >= (box1.begin_row - 1)) {
                             if (appxIsScroll(box1)) {
-                                box2.scrollrow = box1.begin_row - (box2.begin_row - 1); 
+                                box2.scrollrow = box1.begin_row - (box2.begin_row - 1);
                             }
                             else {
                                 if (Math.abs(box1.bit_mask & BORD_AROUND) == 0 && box1.widget.wIconWallpaper == null && box1.widget.wColorBgWallpaper == null && box1.widget.wBorder == null && box1.widget.wLabel == null) {
@@ -1165,9 +1464,9 @@ function appxshowboxes() {
             var boxwidth = ((box.end_column - box.begin_column) * cel.w) + (3 * cel.w) + 2;
             var boxheight = ((box.end_row - (box.begin_row - 1)) * cel.h) + (1 * cel.h);
             if (appxIsScroll(box)) {
-            /*Scroll Boxes don't have an extra margin.  The - 4 is to leave the 
-		    **box 4 pixels larger for scroll boxes.  This allows room for the 2 
-		    **pixel top and bottom needed to render correctly */
+            /*Scroll Boxes don't have an extra margin.  The - 4 is to leave the
+                    **box 4 pixels larger for scroll boxes.  This allows room for the 2
+                    **pixel top and bottom needed to render correctly */
                 boxheight -= ((1 * cel.h) - 4);
             } else {
                 boxheight += (1 * cel.h);
@@ -1177,8 +1476,20 @@ function appxshowboxes() {
             if (boxheight >= document.documentElement.clientHeight && (box.data.indexOf("SBN=0") > -1 && checkBrowser() === "Firefox")) {
                 boxheight += appx_session.rowHeightPx;
             }
+
+            // BUG #3712: Popup input screen is centered incorrectly
+            if( i==0 ) {
+                var backgroundBoxHeight = boxheight;
+            }
+
+            
             var boxtop = (box.begin_row * cel.h) - cel.h;
             var boxleft = (box.begin_column * cel.w) - cel.w;
+            if(box.widget && box.widget.wPositionX && box.widget.wPositionY){
+                //Readjust the position based on widget data
+                boxtop  = (box.widget.wPositionY * cel.h) - cel.h;
+                boxleft = (box.widget.wPositionX * cel.w) - cel.w;
+            }
             /*If engine was told to center the box, then we remove the horizontal
             **centering the engine did to allow client to handle horizontal centering.
             **We also remove vertical centering, but only apply our own vertical
@@ -1197,7 +1508,10 @@ function appxshowboxes() {
                         var tempBoxHeight = box.end_row - box.begin_row;
                         var tempPrevBoxHeight = appx_session.current_show.boxes[i - 1].end_row - appx_session.current_show.boxes[i - 1].begin_row;
                         if (tempBoxHeight <= tempPrevBoxHeight) {
-                            boxtop = appx_session.centerVerticalOffset;
+                         // BUG #3712: Popup input screen is centered incorrectly
+                         // JES: centers on 'main' rather than primary frame box. Chose to use 'backgroundBoxHeight' instead of last Box Height
+                         //      to ensure popup-within-popup is properly centered. Formerly     boxtop = appx_session.centerVerticalOffset;
+                            boxtop = ( backgroundBoxHeight - boxheight) / 2;
                         }
                     }
                 }
@@ -1351,7 +1665,7 @@ function appxshowboxes() {
                         var parentLeft = parseInt(scrollParent.css("left").substring(0, scrollParent.css("left").indexOf("px")));
                         var boxL = parseInt(boxleft.substring(0, boxleft.indexOf("px")));
                         var adjTop = Math.abs(parentTop - (boxtop + cel.h));
-                        var adjLeft = (parentLeft - boxL);
+                        var adjLeft = (boxL - parentLeft );                   /* Bug #4303: formerly:   var adjLeft = (parentLeft - boxL); */
                         var adjWidth = scrollParent.width();
                     }
                     if (appxIsScrollAct(box)) {
@@ -1389,7 +1703,6 @@ function appxshowboxes() {
                 }
             }
             //</scroll>
-
             /*Is box movable*/
             if (box.widget.wMovable) {
                 $boxhtml.data({
@@ -1397,9 +1710,9 @@ function appxshowboxes() {
                 })
                 $boxhtml.draggable({
                     cancel: ".appx-modifiable, .ui-pg-input, .ui-pg-selbox",
-                    drop: function $_draggable_drop() {
-                        var r = Math.floor(($(this).offset().top - $("#appx_main_container").offset().top) / appx_session.rowHeightPx);
-                        var c = Math.floor(($(this).offset().left - $("#appx_main_container").offset().left) / appx_session.colWidthPx);
+                    stop: function $_draggable_drop() {
+                        var r = Math.floor(($(this).offset().top - $("#appx_main_container").offset().top) / appx_session.rowHeightPx) + 1;
+                        var c = Math.floor(($(this).offset().left - $("#appx_main_container").offset().left - appx_session.centerHorizontalOffset) / appx_session.colWidthPx) + 1;
                         appxPutCursor(c, r);
 
                         if ($(this).data("wMovableCommand")) {
@@ -1441,11 +1754,14 @@ function appxshowboxes() {
                 }
             }
             appxshowrowtextforbox(box);
-            appxshowitemsforbox(box, topBoxIdx == scrollIdx);
+            appxshowitemsforbox(box, topBoxIdx == scrollIdx, $boxhtml);
             appxshowwidgetsforbox(box, topBoxIdx == scrollIdx);
             if (!(appxIsScroll(box) || appxIsScrollReg(box))) {
                 if (topBoxIdx != i) {
                     $boxhtml.addClass("appx-not-modifiable");
+                }
+                else {
+                    $boxhtml.addClass("appx-active-box");
                 }
             }
             boxcnt++;
@@ -1538,9 +1854,11 @@ function appxshowcursor(bFocus) {
 
                         /*Set position row & column to adjust for being inside box instead
                         **of statically positioned on main screen*/
+                       /*Note: Position adjustment seems to be not needed
+                        #BUG: 4565 */ 
                         var modPos = {
-                            row: pos.row - box.begin_row + 1,
-                            col: pos.col - box.begin_column + 1
+                            row: pos.row /*- box.begin_row + 1*/,
+                            col: pos.col /*- box.begin_column + 1*/
                         }
 
                         if (
@@ -1551,7 +1869,7 @@ function appxshowcursor(bFocus) {
                             modPos.col <= (item[0].pos_col + item[0].size_cols - 1)
                         ) {
                             bCurItem = true;
-			    setInputFocus($tag);
+                            setInputFocus($tag);
                             break;
                         }
                     }
@@ -1644,7 +1962,7 @@ function appxnestwidgets() {
                 var scrollbox = box;
                 var box = appxitembox((scrollbox.begin_row + wx.wPositionY - 1), (scrollbox.begin_column + wx.wPositionX - 1), wx.wSizeH, wx.wSizeW);
                 var topAdj = (box.begin_row - scrollbox.begin_row) + 1;
-                var leftAdj = (box.begin_column - scrollbox.begin_column);
+                var leftAdj = (box.begin_column - scrollbox.begin_column) + 1;
                 $tag.css({
                     "top": (parseInt($tag.css("top")) - (topAdj * appx_session.rowHeightPx)) + "px",
                     "left": (parseInt($tag.css("left")) - (leftAdj * appx_session.colWidthPx)) + "px"
@@ -1710,43 +2028,43 @@ function appxshowhandler(x) {
         appx_session.current_show = (x.data);
         var show = appx_session.current_show;
         var mode = show.curraction[0];
-	
+
         $("#appx_main_container *").each(function $_each() {
-		var newid = $(this).attr("id") + "-stale";
-		$(this).attr("id", newid);
-	    });
+                var newid = $(this).attr("id") + "-stale";
+                $(this).attr("id", newid);
+            });
         appxnestwidgets();
-	
-	if( appxHandleEmBox() ) {
-	    appx_session.buildingEm = true;
-	}
-	else {
-	    $("#appx_status_date").html("");
-	}
-	
-	if( ! appx_session.buildingEm ) {
-	    appxshowboxes();
-	    appxprepscreen();
-	    setTimeout(function setTimeoutCallback() {
-		    appxSetTabIndexes();
-		}, 0);
-	}
-	
-	AppxResource.sendHeld();
-	
-	screenflipped = false;
-	
-	if ((appx_session.pendingResources.length == 0 && appx_session.pendingTables === 0) || (Math.abs(show.curraction[0] & M_WAIT) == 0)) { 
-	    appxshowscreen();
-	}
-	
-	if (Math.abs(show.curraction[0] & M_SAVE) != 0) {
-	    appx_session.dirtySinceSave = false;
-	}
-	
+
+        if( appxHandleEmBox() ) {
+            appx_session.buildingEm = true;
+        }
+        else {
+            $("#appx_status_date").html("");
+        }
+
+        if( ! appx_session.buildingEm ) {
+            appxshowboxes();
+            appxprepscreen();
+            setTimeout(function setTimeoutCallback() {
+                    appxSetTabIndexes();
+                }, 0);
+        }
+
+        AppxResource.sendHeld();
+
+        screenflipped = false;
+
+        if ((appx_session.pendingResources.length == 0 && appx_session.pendingTables === 0) || (Math.abs(show.curraction[0] & M_WAIT) == 0)) {
+            appxshowscreen();
+        }
+
+        if (Math.abs(show.curraction[0] & M_SAVE) != 0) {
+            appx_session.dirtySinceSave = false;
+        }
+
         if ((Math.abs(show.curraction[0] & M_WAIT) == 0) &&
             (appx_session.pendingResources.length == 0)) {
-            sendappxshow(0, []);
+            sendappxshow(OPT_NULL, []);
         }
         else {
             $(document).tooltip();
@@ -1765,15 +2083,15 @@ function appxshowhandler(x) {
         if (appx_session.processhelp == true) {
             appx_session.processhelp = false;
             setTimeout(function setTimeoutCallback() {
-		    appxwidgetcallback(appx_session.processhelpoption);
-		    appx_session.processhelpoption = null;
-		}, 0);
+                    appxwidgetcallback(appx_session.processhelpoption);
+                    appx_session.processhelpoption = null;
+                }, 0);
         }
-	
-	if( appx_session.buildingEm && ( $("#appx_status_date").text().length === 0 || ! $("#appx_status_date") )) {
-	    appx_session.buildingEm = false;
-	    appx_session.pendingTables = 0;
-	}
+
+        if( appx_session.buildingEm && ( $("#appx_status_date").text().length === 0 || ! $("#appx_status_date") )) {
+            appx_session.buildingEm = false;
+            appx_session.pendingTables = 0;
+        }
     }
     catch (ex) {
         console.log("appxshowhandler: " + ex);
@@ -1786,10 +2104,9 @@ function appxshowrowtextforbox(box) {
     var equalRow = 0;
     var headingOne = 0;
     var headingTwo = 0;
-
+    var zIndexModifier = 25; //default wLayer for RowText based on Widget class
     for (var k = box.rowtext.length - 1; k > -1; k--) {
         var rowtxt = box.rowtext[k];
-        var layer = 0;
         var boxNo = box.widget.wBoxNumber;
         if (rowtxt.pos_row == 1 && rowtxt.string.trim() == "Standard Toolbars")
             continue;
@@ -1816,7 +2133,6 @@ function appxshowrowtextforbox(box) {
                 h = 0;
             var colW = appx_session.colWidthPx;
             var rowH = appx_session.rowHeightPx;
-            var optionWidget = false;
             if (box && appxIsScrollReg(box)) {
                 x = 1;
                 y = 1;
@@ -1849,7 +2165,7 @@ function appxshowrowtextforbox(box) {
             if (rowtxt.string.length > 1 && rowtxt.string[0] == '=')
                 $tag.addClass("ColHdgSep");
             $tag.attr("id", "rowtext_" + count.toString());
-            $tag.text(rowtxt.string.replace(/[\xb6\x0d\x0a]/g, " "));
+            $tag.html(rowtxt.string.replace(/[\xb6\x0d\x0a]/g, " "));
 
             $tag.css({
                 "margin": "0",
@@ -1862,7 +2178,7 @@ function appxshowrowtextforbox(box) {
                 "top": y,
                 "height": h,
                 "width": w,
-                "z-index": -20
+                "z-index": box.layer + (zIndexModifier * -1)
             });
 
             for (var i = 0; i < box.items.length; i++) {
@@ -1880,7 +2196,7 @@ function appxshowrowtextforbox(box) {
     }
 }
 
-function appxshowitemsforbox(box, isActiveBox) {
+function appxshowitemsforbox(box, isActiveBox, boxHtml) {
     //sort array of boxes and items for tabindex
 
     for (var i = box.items.length - 1; i >= 0; i--) {
@@ -1897,9 +2213,9 @@ function appxshowitemsforbox(box, isActiveBox) {
             boxtop = box.begin_row;
         }
 
-        var $tag = box.items[i][1];
+                var $tag = box.items[i][1];
+                var $box = $_screenBuf;
 
-        var $box = $_screenBuf;
         if (isActiveBox) appxSetTabElement(item, $tag);
 
         if (appxIsModifiableCapable(item) && appxIsScrollReg(box))
@@ -1921,10 +2237,9 @@ function appxshowitemsforbox(box, isActiveBox) {
             });
         }
 
-
-        /*If item is a list box, then we check the position of the field to the right,
+        /*If item is a list box or was originally listbox, then we check the position of the field to the right,
         **if it overlaps then we change tag from select to input*/
-        if ($tag.is("select") && navigator.userAgent.indexOf("Mobile") === -1) {
+        if ( ($tag.is("select") || $tag.hasClass("appx-listbox-originally")) && navigator.userAgent.indexOf("Mobile") === -1) {
             var tagWidth = parseInt($tag.css("width"));
             var tagLeft = parseInt($tag.css("left"));
             var selRight = tagLeft + tagWidth;
@@ -1951,45 +2266,177 @@ function appxshowitemsforbox(box, isActiveBox) {
                     var padWidth = $tag.attr("data-padWidth");
                     var initWidth = tagWidth - padWidth;
                     var noPadRight = selRight - padWidth;
-                    var minCol = 5 * appx_session.colWidthPx;
+                    var minCol = 4 * appx_session.colWidthPx;
 
                     /*If tags would overlap, test whether they won't overlap if we
                     **remove padding. Copying java client in putting in a 5 column
                     **minimum size. */
-                    if ((noPadRight < nextLeft) && (initWidth > minCol)) {
+                    if (noPadRight < nextLeft) {
                         /*If tags won't overlap without padding then do the math to
                         **set the tag width to 1px (another element) or 5px (edge of
                         **box) less than an overlap*/
                         var spacing = hitBoxRight ? 5 : 1;
-                        var w = ((nextLeft - spacing) - tagLeft) + "px";
-                        $tag.width(w);
-                    } else {
-                        var attrs = {};
+                        var w = ((nextLeft - spacing) - tagLeft);
+                        if(w > minCol){
+                            $tag.width(w + "px");
+                        } else {
+                            //if still doesn't fit, then draw it with minimum acceptable
+                            //size knowing that it overlaps the next field becaus eof design problem.
+                            $tag.width(minCol.toString()+"px");
+                            /*
+                            var attrs = {};
 
-                        //retrieve all the attributes of the original tag
-                        $.each($tag[0].attributes, function $_each(idx, attr) {
-                            attrs[attr.nodeName] = attr.nodeValue;
-                        });
+                            //retrieve all the attributes of the original tag
+                            $.each($tag[0].attributes, function $_each(idx, attr) {
+                                attrs[attr.nodeName] = attr.nodeValue;
+                            });
 
-                        //Create new tag
-                        $tag = $("<input type='text' />")
+                            //Create new tag
+                            $tag = $("<input type='text' />")
 
-                        //Add all attributes to new tag
-                        for (var attr in attrs) {
-                            $tag.attr(attr, attrs[attr]);
+                            //Add all attributes to new tag
+                            for (var attr in attrs) {
+                                $tag.attr(attr, attrs[attr]);
+                            }
+
+                            //Change width to correct size for input field
+                            var w = (appx_session.colWidthPx * item.size_cols + 5) + "px";
+                            $tag.css({
+                                "width": w
+                            });
+                            */
                         }
-
-                        //Change width to correct size for input field
-                        var w = (appx_session.colWidthPx * item.size_cols + 5) + "px";
-                        $tag.css({
-                            "width": w
-                        });
                     }
                 }
             }
-        }
+                }
+
+                // Fix for bug #4441 Scroll Screen - separate lines and alignment; with adjustments to work in conjunction with
+                // fix for bug #4455 Separator line is missing from an item of row text
+                // When the design calls for a separator, either before or after the row text item, add the required CSS class
+                var $addedSeparator = false;
+                if (item.type == ROWTEXT_TYPE_ITEM) {
+                        var $divTagBefore = $("<div>");
+                        var $divTagAfter = $("<div>");
+                        if (item.widget.wSepBefore != null &&
+                                item.widget.wSepBefore === true) {
+                                $addedSeparator = true;
+                                $divTagBefore.addClass("sepBefore");
+                                $box.append($divTagBefore);
+                                $tag.removeClass("sepBefore");
+                        }
+                        if (item.widget.wSepAfter != null &&
+                                item.widget.wSepAfter === true) {
+                                $addedSeparator = true;
+                                $divTagAfter.addClass("sepAfter");
+                                $box.append($divTagAfter);
+                                $tag.removeClass("sepAfter");
+                        }
+
+            // Retrieve all the attributes of the target tag
+                        var attrs = {};
+            $.each($tag[0].attributes, function $_each(idx, attr) {
+                attrs[attr.nodeName] = attr.nodeValue;
+            });
+
+            //Loop through and find the 'style' attribute
+            for (var attr in attrs) {
+                                if (attr == "style") {
+                                        // Copy the 'style' attribute from the target tag to the new <div>(s)
+                                        // then adjust the new tag's position and prominence
+                            var zIndexModifier = 10;
+                            if (item.widget.wLayer !== null || item.widget.wLayer !== undefined) {
+                                zIndexModifier = item.widget.wLayer;
+                        }
+                                        if (item.widget.wSepBefore === true) {
+                                                $divTagBefore.attr(attr, attrs[attr]);
+                                                $divTagBefore.css({"height": parseInt(boxHtml.css("height")) + "px" });
+                                                $divTagBefore.css({"left": (parseInt($tag.css("left")) - 4) + "px" });
+                                                $divTagBefore.css({"width":  1 + "px" });
+                                                $divTagBefore.css({"top":  0 + "px" });
+                                    $divTagBefore.css({"z-index": (box.layer +  (zIndexModifier * -1))});
+                                        }
+                                        if (item.widget.wSepAfter === true) {
+                                                $divTagAfter.attr(attr, attrs[attr]);
+                                                $divTagAfter.css({"height": parseInt(boxHtml.css("height")) + "px" });
+                                                $divTagAfter.css({"left": (parseInt($tag.css("left")) + parseInt($tag.css("width")) - 2) + "px" });
+                                                $divTagAfter.css({"width":  1 + "px" });
+                                                $divTagAfter.css({"top":  0 + "px" });
+                                    $divTagAfter.css({"z-index": (box.layer +  (zIndexModifier * -1))});
+                                        }
+                                        break;
+                                }
+                        }
+                }
+
         if (box.items[i].length < 4) {
-            $box.append($tag);
+                        // Fix for bug #4441 Scroll Screen - separate lines and alignment; with adjustments to work in conjunction with
+                        // fix for bug #4442 Scroll Screen - separator line for checkbox
+                        if ((item.widget !== undefined && item.widget != null) &&
+                                 (item.widget.wWidgetType !== undefined &&
+                                  item.widget.wWidgetType != null) &&
+                                 (item.widget.wWidgetType == WIDGET_TYPE_CHECK_BOX ||
+                                  item.widget.wWidgetType == WIDGET_TYPE_NONE ||
+                                  item.widget.wWidgetType == WIDGET_TYPE_RAW_TEXT ||
+                                  item.widget.wWidgetType == WIDGET_TYPE_LABEL) &&
+                                 (item.widget.wSepBefore === true ||
+                                  item.widget.wSepAfter === true) &&
+                                  $addedSeparator == false) {
+
+                                var $divTagBefore = $("<div>");
+                                var $divTagAfter = $("<div>");
+                                if (item.widget.wSepBefore === true) {
+                                $divTagBefore.addClass("sepBefore");
+                                        $tag.removeClass("sepBefore");
+                                        $box.append($divTagBefore);
+                                }
+                                if (item.widget.wSepAfter === true) {
+                                        $divTagAfter.addClass("sepAfter");
+                                        $tag.removeClass("sepAfter");
+                                        $box.append($divTagAfter);
+                                }
+
+                                $box.append($tag);
+
+                // Retrieve all the attributes of the target tag
+                                var attrs = {};
+                $.each($tag[0].attributes, function $_each(idx, attr) {
+                    attrs[attr.nodeName] = attr.nodeValue;
+                });
+
+                //Loop through and find the 'style' attribute
+                for (var attr in attrs) {
+                                        if (attr == "style") {
+                                                // Copy the 'style' attribute from the target tag to the new <div>(s)
+                                                // then adjust the new tag's position and prominence
+                                    var zIndexModifier = 10;
+                            if (item.widget.wLayer !== null || item.widget.wLayer !== undefined) {
+                                        zIndexModifier = item.widget.wLayer;
+                                }
+                                                if (item.widget.wSepBefore === true) {
+                                                        $divTagBefore.attr(attr, attrs[attr]);
+                                                        $divTagBefore.css({"height": parseInt(boxHtml.css("height")) + "px" });
+                                                        $divTagBefore.css({"left": (parseInt($tag.css("left")) - 4) + "px" });
+                                                        $divTagBefore.css({"width":  1 + "px" });
+                                                        $divTagBefore.css({"top":  0 + "px" });
+                                            $divTagBefore.css("z-index", (box.layer +  (zIndexModifier * -1)));
+                                                }
+                                                if (item.widget.wSepAfter === true)  {
+                                                        $divTagAfter.attr(attr, attrs[attr]);
+                                                        $divTagAfter.css({"height": parseInt(boxHtml.css("height")) + "px" });
+                                                        $divTagAfter.css({"left": (parseInt($tag.css("left")) + parseInt($tag.css("width")) - 2) + "px" });
+                                                        $divTagAfter.css({"width":  1 + "px" });
+                                                        $divTagAfter.css({"top":  0 + "px" });
+                                        $divTagAfter.css({"z-index": (box.layer +  (zIndexModifier * -1))});
+                                                }
+                                                break;
+                                        }
+                                }
+                        }
+                        else {
+                    $box.append($tag);
+                        }
+
             var zIndexModifier = 10;
             if (item.widget.wLayer !== null || item.widget.wLayer !== undefined) {
                 zIndexModifier = item.widget.wLayer;
@@ -2021,8 +2468,8 @@ function appxshowitemsforbox(box, isActiveBox) {
                 var col = item.widget.wPositionX;
                 var row = item.widget.wPositionY;
                 if (col === null) {
-                    col = item.pos_col;
-                    row = item.pos_row;
+                    col = $tag.data().col;
+                    row = $tag.data().row;
                 }
                 $("<img>")
                     .attr("src", "" + appxClientRoot + "/images/scanicon.png")
@@ -2039,7 +2486,7 @@ function appxshowitemsforbox(box, isActiveBox) {
                     .mousedown(function $_mousedown() {
                         appx_session.scan = true;
                         appxPutCursor($(this).data().col, $(this).data().row);
-			appxSnapshotScanCursor();
+                                                appxSnapshotScanCursor();
                         appxwidgetcallback(OPT_SCAN);
                     })
                     .appendTo($box);
@@ -2056,21 +2503,21 @@ function appxshowscreen() {
     screenflipped = true;
 
     if( ! appx_session.buildingEm ) {
-	var $screen = $("#appx_main_container");
-	$screen.attr("id", "screenBuf");
-	
-	$_screenBuf.attr("id", "appx_main_container");
-	if ($_screenBuf.enhanceWithin)
-	    $_screenBuf.enhanceWithin();
-	$_screenBuf.css("visibility","visible"); //show();
-	
-	$screen.css("visibility","hidden"); //hide();
-	$screen.empty();
-	
-	$_screenBuf = $screen;
+        var $screen = $("#appx_main_container");
+        $screen.attr("id", "screenBuf");
 
-	appxshowcursor(true);
-	callValidateText();
+        $_screenBuf.attr("id", "appx_main_container");
+        if ($_screenBuf.enhanceWithin)
+            $_screenBuf.enhanceWithin();
+        $_screenBuf.css("visibility","visible"); //show();
+
+        $screen.css("visibility","hidden"); //hide();
+        $screen.empty();
+
+        $_screenBuf = $screen;
+
+        appxshowcursor(true);
+        callValidateText();
     }
 
     setTimeout(function setTimeoutCallback() {
@@ -2137,7 +2584,8 @@ function appxprepscreen() { //flip
                 "height": $(el).css("height")
             });
 
-            /*if (appx_session.getProp("dockingScrollbar") == true) {  ##DELETEUSERPREFS##
+/* */
+            if (appx_session.getProp("dockingScrollbar") == true) {  /*  ##DELETEUSERPREFS##   */
                 $grouphtml.addClass("appx-vcr-hide");
                 $vcrhtml.hover(function $_hover_enter() {
                     // mouse enter
@@ -2146,7 +2594,8 @@ function appxprepscreen() { //flip
                     // mouse exit
                     $("#appx-group-vcr-" + vcrcount).addClass("appx-vcr-hide");
                 });
-            }*/
+            }
+/* */
 
             var extra = Math.max(parseInt($(el).css("height")) - (16 * 6), 16) - 0;
             $grouphtml.html("");
@@ -2258,6 +2707,10 @@ function appxshowwidgetsforbox(box, isActiveBox) {
 
             if (parseInt(wgt[0].wWidgetType) == WIDGET_TYPE_BUTTON && !$tag.parent().hasClass("appx-scroll-act")) {
                 $tag.prop("disabled", true);
+                // Bug #4437. Disabled widgets should gray their buttons icon
+                if( $( $tag[0].firstChild ).hasClass('appx-icon-trailing-text') ) {
+                    $( $tag[0].firstChild ).addClass('appx-icon-trailing-text-disabled')
+                }
                 $tag.css({
                     "color": ""
                 });
@@ -2353,7 +2806,7 @@ function appxSetTabFocus($tagSrc, bBack, mAutoTab) {
         el = tl[ti];
 
         /*If we got here because of autotab and are tabbing to a button,
-        **then we need to autotab to the default button instead of the next 
+        **then we need to autotab to the default button instead of the next
         **button on screen.*/
         if (el.is("button") && mAutoTab && ($("button.default").length > 0)) {
             el = $("button.default");
@@ -2377,7 +2830,7 @@ function appxSetTabIndexes() {
             var tablist = [];
 
             var pushTabElement = function pushTabElement($tag, tabGrp) {
-                /*If tag is set to display:none then we do not assign a tab index to 
+                /*If tag is set to display:none then we do not assign a tab index to
                 **it, otherwise the tabbing will stop if the index is set and the
                 **element has been set not to display*/
                 if ($tag.css("display") !== "none") {
@@ -2399,8 +2852,8 @@ function appxSetTabIndexes() {
                         return false;
                     });
                     if (!$tag.is("button")) {
-                        // Implements Auto Tab-Out 
-                        // modifier and non-printing keys such as Shift, Esc, Del 
+                        // Implements Auto Tab-Out
+                        // modifier and non-printing keys such as Shift, Esc, Del
                         // trigger keydown events and not keypress events
                         // using keyup however, because keypress sometimes doesn't
                         // overwrite chars after a select
@@ -2413,14 +2866,14 @@ function appxSetTabIndexes() {
                                     //skip nonprintable keycodes
                                     if (k > 46 && (k < 91 || k > 93) && (k < 112 || k > 125)) {
                                         /*Input fields should use selectionstart to check
-                                        **for cursor position and not tab when at last 
-                                        **position in a field. But only certain fields 
+                                        **for cursor position and not tab when at last
+                                        **position in a field. But only certain fields
                                         **use the selectionstart property, so we need to
-                                        **check and make sure it has property before 
+                                        **check and make sure it has property before
                                         **trying to use it for the autotab option*/
                                         var max = $(this).attr("maxlength");
                                         var autoTab = appx_session.getProp("autoTabOut");
-					var thisTag = getInputElement(this);
+                                        var thisTag = getInputElement(this);
 
                                         /*If field doesn't have max length to check or if
                                         **autotab is false then there is no reason to
@@ -2433,13 +2886,13 @@ function appxSetTabIndexes() {
                                                     tab = true;
                                                 }
                                             } else {
-						if( $(thisTag).hasClass('appxdatevalue') ) {
-						    if (max <= $(thisTag).val().replace(/_/g,' ').trim().length) {
+                                                if( $(thisTag).hasClass('appxdatevalue') ) {
+                                                    if (max <= $(thisTag).val().replace(/_/g,' ').trim().length) {
                                                     tab = true;
                                                 }
                                             }
-						else {
-						    if (max <= $(thisTag).val().trim().length) {
+                                                else {
+                                                    if (max <= $(thisTag).val().trim().length) {
                                                     tab = true;
                                                 }
                                             }
@@ -2514,21 +2967,36 @@ function appxSetTabIndexes() {
                     for (var keys in tab[lvl]) {
                         for (var KEYS in tab[lvl]) {
                             if (keys !== KEYS && KEYS !== "grp-dfltButtons") {
+// Bug #4445, Input Tab sequencing not reacting the same (as Java client)
+// Previously: split if 1. the first of this group is after the first of the parent group, AND
+//                      2. the last of this group is before the last of the parent group
+//                              if ((sortTabElements(tab[lvl][keys][0], tab[lvl][KEYS][0]) > 0) &&
+//                                  (sortTabElements(tab[lvl][keys][(tab[lvl][keys].length - 1)], tab[lvl][KEYS][(tab[lvl][KEYS].length - 1)]) < 0)) {
+// Now, split if 1. the first of this group is after the first of the parent group, AND
+//               2. the parent group is either default group (0) or some split thereof, AND
+//               3. the first of this group is before the last of the parent group
+//               *. the interrupting tab group cannot be the grp-dfltButtons group
                                 if ((sortTabElements(tab[lvl][keys][0], tab[lvl][KEYS][0]) > 0) &&
-                                    (sortTabElements(tab[lvl][keys][(tab[lvl][keys].length - 1)], tab[lvl][KEYS][(tab[lvl][KEYS].length - 1)]) < 0)) {
+                                    ( KEYS == 'grp-0' || KEYS.includes( 'split' ) ) &&
+                                    ( keys !== 'grp-dfltButtons' ) &&
+                                    (sortTabElements(tab[lvl][keys][0], tab[lvl][KEYS][(tab[lvl][KEYS].length - 1)]) < 0)) {
+
                                     var arrayLength = tab[lvl][KEYS].length;
                                     var arrayCount = 0;
                                     var splitKey = KEYS + "-split"
+// We know we're going to split the parent - where in the parent group are we interrupting?
                                     for (var i = 0; i < tab[lvl][KEYS].length; i++) {
                                         if ((sortTabElements(tab[lvl][keys][0], tab[lvl][KEYS][i]) < 0)) {
                                             arrayCount = i;
                                             break;
                                         }
                                     }
+// Create new sub-group 'splitKey', populate with all KEYS widgets from point of interception forward, with same widgets removed from original group
                                     tab[lvl][splitKey] = tab[lvl][KEYS].splice(arrayCount, (arrayLength - arrayCount));
                                     for (var i = 0; i < tab[lvl][splitKey].length; i++) {
                                         tab[lvl][splitKey][i].grp = splitKey;
                                     }
+// add this new split sub-group to table of tab groups
                                     tabGroup[tabGroup.length] = tab[lvl][splitKey][0];
                                 }
                             }
@@ -2612,26 +3080,29 @@ function appxSetTabIndexes() {
  */
 function sendappxshow(option, data) {
     if( !appx_session.buildingEm )
-	clearAndReset();
-    
+        clearAndReset();
+
     appx_session.showCursor = false;
     appxSetStatusStateText(APPX_STATE_BUSY);
     try {
-	if( !appx_session.buildingEm ) {
-	    $(".appxtablewidget").each(function $_each() {
-		    var uigrid = $(this).attr('id');
-		    AppxTable.updateTableFromGrid( uigrid );
-		    
-		    var selrows = AppxTable.getSelections( uigrid );
-		    var selkeys = [];
-		    for (var i = 0; i < selrows.length; i++) {
-			selkeys.push(selrows[i]);
-		    }
-		    $(this).data("selkeys", selkeys);
-		});
-	}
-	
-        if (appxIsLocked() && option != 0 && option != 0xFFFF) return; //e.g. obsolete focus handler
+        if( !appx_session.buildingEm ) {
+            $(".appxtablewidget").each(function $_each() {
+                    var uigrid = $(this).attr('id');
+                    AppxTable.updateTableFromGrid( uigrid );
+
+                    var selrows = AppxTable.getSelections( uigrid );
+                    var selkeys = [];
+                    for (var i = 0; i < selrows.length; i++) {
+                        //remove the added 'i' from the selkeys
+                        /* we added 'i' to the begining of the id to comply with html id (must include at least one character)
+                           so the added 'i' needs to be removed from the key before we send it to the engine */
+                        selkeys.push(selrows[i].substring(1));
+                    }
+                    $(this).data("selkeys", selkeys);
+                });
+        }
+
+        if (appxIsLocked() && option != null && option != OPT_NULL && appx_session.processhelpoption == null ) return; //e.g. obsolete focus handler
         appx_session.applyStylesCount = 0;
         appx_session.currenttabledata = [];
         appxSetLocked(true);
@@ -2646,7 +3117,7 @@ function sendappxshow(option, data) {
             var mode = rtnshow.rawdata[4];
 
             //have to set return status in 0xC message to indicate and option was selected
-            if (option >= 0) rtnshow.rawdata[35] = 1;
+            if (option != null && option >= 0) rtnshow.rawdata[35] = 1;
 
             var dv = new DataView(new Uint8Array(rtnshow.rawdata).buffer);
 
@@ -2654,11 +3125,15 @@ function sendappxshow(option, data) {
             var cur = appxGetCursorPos();
             dv.setUint32(12, cur.row);
             dv.setUint32(16, cur.col);
-            dv.setUint32(28, parseInt(option));
+            if(option != null){
+                dv.setUint32(28, parseInt(option));
+            } else{
+                dv.setUint32(28, OPT_NULL);
+            }
 
-            if (mode == 2 || mode == 32) {
+            if (mode == M_SHOW || mode == M_COMPARE) {
                 dv.setUint32(32, parseInt("8"));
-                dv.setUint32(28, parseInt("65535"));
+                dv.setUint32(28, OPT_NULL);
             }
 
             dv.setInt32(44, 0);
@@ -2667,7 +3142,7 @@ function sendappxshow(option, data) {
             if (rtnshow.altuseroption && appx_session.scan) {
                 var temp1 = 0;
                 var temp2 = 0;
-                
+
                 temp1 = dv.getUint32(12);
                 temp2 = new DataView(new Uint8Array(rtnshow.altcursorrow).buffer).getUint32(0);
                 dv.setUint32(12, temp2);
@@ -2785,7 +3260,7 @@ function sendappxshow(option, data) {
                     dataval = $(data[dl]).data()["_inputmask_opts"].alias.replace(/\*/g, " ");
                 } else if ($(data[dl]).val()) {
                     /*If data is file upload element we need to do extra checking and
-                    **modify file name so that APPX knows the file was stored in 
+                    **modify file name so that APPX knows the file was stored in
                     **mongo*/
                     if (($(data[dl]).hasClass("appxfilewrapper") &&
                         $(data[dl]).hasClass("DULC")) ||
@@ -2800,7 +3275,7 @@ function sendappxshow(option, data) {
                                 fType = "file";
                                 dvd = dataval = "$(sendFile)\\";
                             }
-                            /*Only method for sending directory or multiple files is 
+                            /*Only method for sending directory or multiple files is
                             **to create drag & drop object for each file.*/
                             for (var i = 0; i < filesArrayLength; i++) {
                                 var fileName = appx_session.filesUploadArray[i].name.replace(/ /g, "_");
@@ -2869,7 +3344,7 @@ function sendappxshow(option, data) {
                     var datacol = parseInt($("#" + id).data("col"));
                     msgdata.push(datacol);
                 } else {
-                    /*If there is no item, then check to see if it was a widget and 
+                    /*If there is no item, then check to see if it was a widget and
                     **get position of widget*/
                     var datarow = (parseInt($(data[dl]).closest(".appxwidget").closest("div").data("row")));
                     msgdata.push(datarow);
@@ -2955,19 +3430,20 @@ function sendappxshow(option, data) {
                     // Or check field class here to see if it should be uppercase
                     dataval = dataobj.selkeys[z];
 
-                    //ROW - need 4bytes BE
-                    var datarow = [0, 0, 0, parseInt(dataobj.row)];
+                    //Table Position ROW - need 4bytes BE
+                    var datarow = hton32(parseInt(dataobj.row));
                     Array.prototype.push.apply(msgdata, datarow);
-                    //COL - need 4bytes BE
-                    var datacol = [0, 0, 0, parseInt(dataobj.col)];
+                    //Table Poition COL - need 4bytes BE
+                    var datacol = hton32(parseInt(dataobj.col));
                     Array.prototype.push.apply(msgdata, datacol);
                     //SEQ - need 4bytes BE
-                    var seq = [0, 0, 0, keycnt + 1];
+                    var seq = hton32(keycnt + 1);
                     Array.prototype.push.apply(msgdata, seq);
-                    //alway a 6
+                    //Parent Type 1byte: alway a 6
                     msgdata.push(6);
-
+                    //Key length in hex 
                     msgdata.push(dataval.length / 2);
+                    //convert key values to hex
                     for (var k = 0; k < dataval.length; k += 2) {
                         msgdata.push(parseInt(dataval.substring(k, k + 2), 16));
                     }
@@ -2977,8 +3453,7 @@ function sendappxshow(option, data) {
         }
 
         //RUN THRU 4 BYTE BE
-        var msglength = [0, 0, 0];
-        msglength.push(keycnt);
+        var msglength = hton32(keycnt);
 
         ms = {
             cmd: 'appxmessage',
@@ -3345,13 +3820,26 @@ function appxClearScanCursor() {
 function appxPutCursor(c, r) {
     try {
         var bCurItem = false; //cursor inside field?
-        if (!appxIsLocked()) {
+        if (!appxIsLocked() ) {
             var cur = appxGetCursorPos(); //prevent recursive call through focus
             if (cur.col != c || cur.row != r) {
                 appx_session.current_show.cursorcol = [0, 0, 0, appxFixCursorCol(c)];
                 appx_session.current_show.cursorrow = [0, 0, 0, appxFixCursorRow(r)];
                 bCurItem = appxshowcursor(false); //don't call focus
             }
+        }
+        else{
+            /*wait a little to see if locks gets created*/
+            setTimeout(function(){
+                if (!appxIsLocked() ) {
+                    var cur = appxGetCursorPos(); //prevent recursive call through focus
+                    if (cur.col != c || cur.row != r) {
+                        appx_session.current_show.cursorcol = [0, 0, 0, appxFixCursorCol(c)];
+                        appx_session.current_show.cursorrow = [0, 0, 0, appxFixCursorRow(r)];
+                        bCurItem = appxshowcursor(false); //don't call focus
+                    }
+                }
+            },100);
         }
         return bCurItem;
     }
@@ -3527,7 +4015,7 @@ var ROWTEXT_TYPE_NONE = 0;
 var ROWTEXT_TYPE_ITEM = 1;
 var ROWTEXT_TYPE_WIDGET = 2;
 
-/*Show popup for displaying about info or telling user that functionality has not 
+/*Show popup for displaying about info or telling user that functionality has not
  *yet been implemented*/
 function showPopup(functional) {
     if (functional) {

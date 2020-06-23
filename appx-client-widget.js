@@ -6,11 +6,32 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-widget.js,v 1.439 2019/01/03 01:07:07 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-widget.js,v 1.463 2020/02/18 21:02:12 m.karimi Exp $";
 
 //Need to Remove the default styles and set CUSTOM.css - !!!
 
 "use strict";
+
+function sanitizeText( text, itemspec ) {
+// itemspec: If true,  then will always be subject to HTML
+//           If false, then will never be subject to HTML
+//           If null,  then will defer to item content, looking for <html> prefix
+    if (text == null) 
+        return text;
+    var div = $("<div>");
+    if( itemspec ) {
+        return text;
+    } else if( itemspec == null ) {
+        if( text.substring(0,6).toLowerCase().startsWith( "<html>" ) ) {
+            return text;
+        } else {
+            return div.text(text).html();
+        }
+    } else {
+        return div.text(text).html();
+    }
+}
+
 function addClientId(appxId, clientId) {
     if (clientId && clientId != appxId) {
         appx_session.clientIds[appxId] = clientId;
@@ -62,7 +83,7 @@ function appxwidgetcallback(option) {
     }
     if (option === 274 || option === 330 || option === 304) {
         appx_session.scan = false;
-	appxClearScanCursor();
+        appxClearScanCursor();
     }
     /*if option is supposed to be handled by the client then change client
     **preferences and reset option to just redraw screen*/
@@ -97,8 +118,6 @@ function appxwidgetcallback(option) {
     });
     if (appx_session.processhelp == true) {
         appx_session.processhelpoption = option;
-        console.log("option: " + option);
-        console.log("processhelpoption: " + appx_session.processhelpoption);
         option = OPT_HELP_OPT;
     }
 
@@ -182,6 +201,15 @@ function appxwidgetdimensions(wori, $tag, box) { //Widget or Item
                 var tempLeft = ((colP - box.begin_column) * appx_session.colWidthPx);
                 y = tempTop;
                 x = tempLeft;
+                //apply micro adjustments
+                if (wx.hasOwnProperty("wWidgetId")) { //instanceof Widget
+                    // The java client truncates, not rounds, the double NOT (~~) is
+                    // a fast and negative value safe way to truncation a float to an int.
+                    if (wx.wOffsetX)
+                        x += ~~((wx.wOffsetX * appx_session.colWidthPx ) / 100);
+                    if (wx.wOffsetY)
+                        y += ~~((wx.wOffsetY * appx_session.rowHeightPx) / 100);
+                }
             }
 
             $tag.css({
@@ -193,7 +221,7 @@ function appxwidgetdimensions(wori, $tag, box) { //Widget or Item
             if ((wt !== WIDGET_TYPE_LINE) && (h === 0 || w === 0)) {
                 $tag.hide();
             }
-            
+
             if (wt == WIDGET_TYPE_HTML_VIEWER) {
                 h -= 2;
             }
@@ -204,10 +232,16 @@ function appxwidgetdimensions(wori, $tag, box) { //Widget or Item
                 if (wt != WIDGET_TYPE_TABLE && wt != WIDGET_TYPE_BOX && wt != WIDGET_TYPE_BUTTON && wt != WIDGET_TYPE_LABEL && wt != WIDGET_TYPE_PICTURE && wt != WIDGET_TYPE_LISTBOX) {
                     w += 5;
                 }
-                if (wt == WIDGET_TYPE_LISTBOX) {
+                /* html client changes the listbox to row text in inquire mode. If the original type was token,
+                 we still want to add extra padding for consistency */
+                if (wt == WIDGET_TYPE_LISTBOX || wx.wWidgetOriginalType == WIDGET_TYPE_LISTBOX) {
                     var pad = colW * 3.96; //Added width to accomodate drop down arrow
                     $tag.attr("data-padWidth", pad);//Attach added width to data tag
                     w += pad;
+                    //if the type is raw-text remove extra 5 px that we added to the widget width
+                    if (wt == WIDGET_TYPE_RAW_TEXT && wx.wWidgetOriginalType == WIDGET_TYPE_LISTBOX) {
+                        w -= 5;
+                    }
                 }
                 if ($tag.hasClass("button") && $tag.hasClass("error")) {
                     w = 315;
@@ -265,6 +299,9 @@ function appxwidgetshandler(x) {
         var wt = parseInt(wx.wWidgetType);
         //console.log("widget row=%d, col=%d label=%s, box=%d %s",wx.wPositionY,wx.wPositionX,wx.wLabel,wdata[0],ab2str(wdata[1]));
 
+
+                wx.wLabel = sanitizeText( wx.wLabel, null );
+
         if (wx.wDefaultButton) {
             if (defaultButtonSet)
                 wx.wDefaultButton = null;
@@ -313,10 +350,373 @@ function appxwidgetshandler(x) {
     } //end while widgets
 }
 
+/**
+ * This routine converts table column widget data to a widget object and a html tag
+ * @param {*} wdata 
+ * @return {tag:Htmltag, widget: Widget-object}
+ */
+function appxTableColumnWidgetHandler(wdata) {
+    var wx = new Widget(0, "", wdata, null, null);
+    var wt = parseInt(wx.wWidgetType);
+    wx.wLabel = sanitizeText( wx.wLabel, null );
+    var $tag = null;
+    /*New widget creation code*/
+    if (typeof appx_session.createWidgetTag[wt] !== "function") {
+        var widgetObj = appx_session.createWidgetTag["default"](wx, $tag);
+        $tag = widgetObj.tag;
+        wx = widgetObj.widget;
+        wt = wx.wWidgetType;
+    } else {
+        $tag = appx_session.createWidgetTag[wt](wx, $tag);
+    }
+    /*End New widget creation code*/
+
+    $tag.data("parent_type", WIDGET_PRNT_TYPE_WIDGET);
+    if ($tag != null) {
+        wx.wPositionX = 1;
+        wx.wPositionY = 1;
+        appxwidgetdimensions(wx, $tag);
+    }
+    return({"tag":$tag, "widget":wx});
+}
+/**
+ * This routine converts table row widget data to a widget object 
+ * @param {*} wdata 
+ * @return {Widget} Widget-object
+ */
+function appxTableRowWidgetHandler(wdata) {
+    return(new Widget(0, "", wdata, null, null));
+}
+/**
+ * This fuction applies style attributes based on the given 
+ * widget object to the given table column tag
+ * @param {Widget} widget object 
+ * @param {*} jquey tag of the table column 
+ */
+function appxTableApplyColumnStyle(wx, $tag){
+    //set the bg color on parent so it includes the separator tag as well
+    if (wx.wColorBg) {
+        $tag.parent().css("background", wx.wColorBg);
+    }
+    if (wx.wColorBgNL) {
+        $tag.parent().css("opacity", wx.wColorBgNL);
+    }
+    //<rollover>
+    if (wx.wColorBgRollover || wx.wColorBgRolloverNL ||
+            wx.wColorFgRollover || wx.wColorFgRolloverNL ||
+            wx.wIconRollover) 
+    { //hover
+        if (wx.wIconRollover) {
+            $tag.addClass(AppxResource.load(wx.wIconRollover) + "_imgRO");
+            var iconRollover = function iconRollover() {
+                var src = $img.attr("src"),
+                    srcRO = $tag.attr("srcRO");
+                if (src != undefined && srcRO != undefined) {
+                    $tag.attr("srcRO", src);
+                    $img.attr("src", srcRO);
+                }
+            };
+        }
+        $tag.mouseenter(function $_mouseenter() {
+            if (wx.wColorBgRollover)
+                $tag.parent().css("background", wx.wColorBgRollover);
+            if (wx.wColorBgRolloverNL)
+                $tag.parent().css("opacity", wx.wColorBgRolloverNL);
+            if (wx.wColorFgRollover)
+                $tag.css("color", wx.wColorFgRollover);
+            if (wx.wColorFgRolloverNL)
+                $tag.css("opacity", wx.wColorFgRolloverNL);
+            if (wx.wIconRollover)
+                iconRollover();
+        }).mouseleave(function $_mouseleave() {
+            //container
+            if (wx.wColorBgRollover)
+                $tag.parent().css("background", (wx.wColorBg ? wx.wColorBg : ""));
+            if (wx.wColorBgRolloverNL)
+                $tag.parent().css("opacity", (wx.wColorBgNL ? wx.wColorBgNL : 1.0));
+            //labeltext
+            if (wx.wColorFgRollover)
+                $tag.css("color", (wx.wColorFg ? wx.wColorFg : ""));
+            if (wx.wColorFgRolloverNL)
+                $tag.css("opacity", (wx.wColorFgNL ? wx.wColorFgNL : 1.0));
+            if (wx.wIconRollover)
+                iconRollover();
+        });
+    }
+    //</rollover>
+    if (wx.wColorFg) {
+        $tag.css("color", wx.wColorFg);
+        if (wx.wColorFgNL) $tag.css("opacity", wx.wColorFgNL);
+    }
+    //<font>
+    if (wx.wFont) {
+        //Remove the default font and set CUSTOM.css
+        var ff = null;
+        switch (wx.wFont) {
+            case "helvetica": ff = (bInput ? "default-input" : "default"); break;
+            case "Courier": ff = "courier"; break;
+            case "Helvetica": ff = "arial"; break;
+            case "TimesRoman": ff = "times-roman"; break;
+            case "Dialog": ff = "fixed-sys"; break;
+            case "DialogInput": ff = "terminal"; break;
+            case "ZapfDingbats": ff = "wingdings"; break;
+            case "SanSerif": ff = "ms-sans-serif"; break;
+            case "Serif": ff = "ms-serif"; break;
+            case "Monospaced": ff = "fixed-sys"; break;
+        }
+        if (ff != null)
+            $tag.addClass("appx-font-" + ff);
+        else
+            $tag.css("font-family", wx.wFont);
+    }
+    if (wx.wFontSize) {
+        $tag.css("font-size", wx.wFontSize);
+        $tag.addClass("appx-fontsize-adjusted");
+    }
+    if (wx.wFontStyle) {
+        switch (wx.wFontStyle) {
+            case "bold":
+                $tag.css("font-weight", "bold");
+                break;
+            case "italic":
+                $tag.css("font-style", "italic");
+                break;
+            case "bolditalic":
+                $tag.css({
+                    "font-weight": "bold",
+                    "font-style": "italic"
+                });
+                break;
+        }
+    }// </font>
+    //alignment 
+    if (wx.wSetHorizAlign){
+        switch (wx.wSetHorizAlign) {
+            case 'LEFT':
+                $tag.css({ "text-align" : "left" });
+                break;
+            case 'RIGHT':
+                $tag.css({ "text-align" : "right" });
+                break;
+            case 'CENTER':
+                $tag.css({ "text-align" : "center" });
+                break;
+            default: //null,''
+                break;
+        }
+    }
+    //FIXME: This currently doesn't work
+    if (wx.wSetVertAlign) {
+        switch (wx.wSetVertAlign) {
+            case 'BOTTOM':
+                $tag.css({ "vertical-align" : "bottom" });
+                break;
+            case 'TOP':
+                $tag.css({ "vertical-align" : "top" });
+                break;
+            default: //null,'','CENTER'
+            $tag.css({ "vertical-align" : "middle" });
+                break;
+        }
+    }
+
+    if (wx.wTooltip && navigator.userAgent.indexOf("Mobile") === -1) {
+        $tag.data('title', wx.wTooltip); // <-- does not support HTML tags in tooltip
+        $tag.addClass("appx-tooltip");
+        $tag.tooltip({
+            fade: 250,
+            show: { delay: 600 },
+            hide: { delay: 200 },
+            open: function $_tooltip_open(event, ui) {
+                setTimeout(function setTimeoutCallback() {
+                    $(ui.tooltip).hide('fade');
+                }, 3000);
+            },
+            items: ".appx-tooltip",
+            content: function $_tooltip_content() {
+                return $(this).data('title');
+            }
+        }).on("focusin", function $_onFocusin() {
+            $(this).tooltip("close");
+        });
+    }
+
+}
+
+/**
+ * This fuction create cell attributes based on the given 
+ * widget object to be added to each cell on the table
+ * @param {Widget} widget object 
+ * @return {*} Object jquey tag of the table column 
+ */
+function appxTableCreateCellAttribute(wx, isSelected){
+
+    var styleAttr = {};
+    var classes = {};
+    var otherAttr = "";
+    var cellAttr = "";
+    var bgColor = null;
+    var fgColor = null;
+    var altBgColor = null;
+    var altFgColor = null;
+    if(wx == null){
+        return styleAttr;
+    }
+    //add classes
+    if(wx.wClasses){
+        for(cls in wx.wClasses.split(" ")){
+            if(cls.trim().length > 0){
+                classes[cls.trim()] = 1;
+            }
+        }          
+    }
+    //set the bg color  
+    if (wx.wColorBg) {
+        bgColor =  wx.wColorBg;
+        if (wx.wColorBgNL) {
+            bgColor +=  (wx.wColorBgNL * 255).toString(16);
+        }
+        otherAttr += ' bgColor="'+bgColor+'"';
+    }
+    if(wx.wAltColorBg){
+        altBgColor =  wx.wAltColorBg;
+        otherAttr += ' altBgColor="'+altBgColor+'"';
+    }
+    //if the row is selected and we have alternate bg color, use alternate bg color for background
+    if(altBgColor != null && isSelected == true){
+            styleAttr["background-color"] =  altBgColor;
+            classes["appx-bgcolor-adjusted"] = 1;
+    }
+    else if(bgColor != null){
+        styleAttr["background-color"] = bgColor;
+        classes["appx-bgcolor-adjusted"] = 1;
+    }
+    //font color
+    //set the bg color  
+    if (wx.wColorFg) {
+        fgColor =  wx.wColorFg;
+        if (wx.wColorFgNL) {
+            fgColor +=  (wx.wColorFgNL * 255).toString(16);
+        }
+        otherAttr += ' fgColor="'+fgColor+'"';
+    }
+    if(wx.wAltColorFg){
+        altFgColor =  wx.wAltColorFg;
+        otherAttr += ' altFgColor="'+altFgColor+'"';
+    }
+    //if the row is selected and we have alternate font color, use alternate color for font color
+    if(altFgColor != null && isSelected == true){
+            styleAttr["color"] =  altFgColor;
+            classes["appx-fgcolor-adjusted"] = 1;
+    }
+    else if(fgColor != null){
+        styleAttr["color"] = fgColor;
+        classes["appx-fgcolor-adjusted"] = 1;
+    }
+    //<font>
+    if (wx.wFont) {
+        //Remove the default font and set CUSTOM.css
+        var ff = null;
+        switch (wx.wFont) {
+            case "helvetica": ff = "default"; break;
+            case "Courier": ff = "courier"; break;
+            case "Helvetica": ff = "arial"; break;
+            case "TimesRoman": ff = "times-roman"; break;
+            case "Dialog": ff = "fixed-sys"; break;
+            case "DialogInput": ff = "terminal"; break;
+            case "ZapfDingbats": ff = "wingdings"; break;
+            case "SanSerif": ff = "ms-sans-serif"; break;
+            case "Serif": ff = "ms-serif"; break;
+            case "Monospaced": ff = "fixed-sys"; break;
+        }
+        if (ff != null){
+            classes["appx-font-" + ff] = 1;
+        }
+        else{
+            styleAttr["font-family"] = wx.wFont;
+        }
+        classes["appx-font-adjusted"] = 1;
+    }
+    if (wx.wFontSize) {
+        styleAttr["font-size"] = wx.wFontSize+"px";
+        classes["appx-fontsize-adjusted"] = 1;
+    }
+    if (wx.wFontStyle) {
+        classes["appx-fontstyle-adjusted"] = 1;
+        switch (wx.wFontStyle) {
+            case "bold":
+                styleAttr["font-weight"] = "bold";
+                break;
+            case "italic":
+                styleAttr["font-style"] = "italic";
+                break;
+            case "bolditalic":
+                styleAttr["font-style"] = "italic";
+                styleAttr["font-weight"] = "bold";
+                break;
+        }
+    }// </font>
+    //alignment 
+    if (wx.wSetHorizAlign){
+        switch (wx.wSetHorizAlign) {
+            case 'LEFT':
+                styleAttr["text-align"] = "left";
+                break;
+            case 'RIGHT':
+                styleAttr["text-align"] = "right";
+                break;
+            case 'CENTER':
+                styleAttr["text-align"] = "center";
+                break;
+            default: //null,''
+                break;
+        }
+        classes["appx-textalign-adjusted"] = 1;
+    }
+    //FIXME: This currently doesn't work
+    if (wx.wSetVertAlign) {
+        switch (wx.wSetVertAlign) {
+            case 'BOTTOM':
+                styleAttr["vertical-align"] = "bottom";
+                break;
+            case 'TOP':
+                styleAttr["vertical-align"] = "top";
+                break;
+            default: //null,'','CENTER'
+                styleAttr["vertical-align"] = "middle";    
+        }
+        classes["appx-valign-adjusted"] = 1;
+    }
+    //Tooltip
+    if (wx.wTooltip && navigator.userAgent.indexOf("Mobile") === -1) {
+        otherAttr += ' title="'+ wx.wTooltip + '"'; // <-- does not support HTML tags in tooltip
+        classes["appx-tooltip"] = 1;
+    }
+
+    /* add style, classes, and other attribites in a string field and eturn */
+    cellAttr = otherAttr;
+    if( Object.keys(styleAttr).length > 0){
+        var key = "";
+        cellAttr += ' style="';
+        for(key in styleAttr){
+            cellAttr += key+":"+styleAttr[key]+"; ";
+        }
+        cellAttr += '"'
+    } 
+    if(Object.keys(classes).length > 0){
+        cellAttr += ' class="';
+        var className = "";
+        for(className in classes){
+            cellAttr += " "+className;
+        }
+        cellAttr += '"';
+    }
+    return cellAttr;
+}
 
 /*
 **Function to attach blur event to HTML element if we have there is lost
-**focus event, DLU event, or both attached to the item or widget being 
+**focus event, DLU event, or both attached to the item or widget being
 **processed
 **
 **@param $tag: HTML element to append blur function to.
@@ -384,7 +784,10 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
 
         if ($tag.html() && wt != WIDGET_TYPE_DATE_CHOOSER) {
             var itemdata = $tag.html();
-            $tag.html("");
+ // Bug #4438: need to synth non-modifiable checkmarks, so don't remove html if this is a check box widget
+            if (wt != WIDGET_TYPE_CHECK_BOX) {
+                $tag.html("");
+            }
         }
 
         switch (wt) {
@@ -548,7 +951,8 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                                     wgtid: randclass,
                                     wPosX: wx.wPositionX + 1,
                                     wPosY: wx.wPositionY + 1
-                                }
+                                },
+                                authToken: localStorage.authToken
                             };
                             localos_session.ws.send(JSON.stringify(ms));
                             return false;
@@ -560,7 +964,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                 break;
             case WIDGET_TYPE_TABLE:
 /* APPXTABLE */
-		wx.tableHashKey = AppxTable.updateTableFromWidget( wx );
+                wx.tableHashKey = AppxTable.updateTableFromWidget( wx );
 /*
                 if (wx.widgetExtraData.widget_extra_reuse == true) {
                     var tablespecs = appx_session.gridcache[wx.tableHashKey];
@@ -576,7 +980,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                     appx_session.gridcache[wx.tableHashKey] = tablespecs;
                     if (appx_session.gridpropscache && appx_session.gridpropscache[wx.tableHashKey]) {
                         var gridprops = appx_session.gridpropscache[wx.tableHashKey];
-			            gridprops.selectedKeys = tablespecs.selectedKeys;
+                                    gridprops.selectedKeys = tablespecs.selectedKeys;
                     }
                     tablespecs.enabled = wx.wEnabled != false;
                 }
@@ -630,6 +1034,10 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
         if ($tag.is("fieldset")) {
             $tag.addClass("appx-border-etched-sunken");
         }
+        //if html viewer with null border, default the border to bevel sunken to match the java client
+        if($tag.is(".appx-html-viewer")){
+            $tag.addClass("appx-border appx-border-bevel-sunken");
+        }
     }
     if (wx.wColorBgWallpaper && !bTitlebar) {
         if (wt !== WIDGET_TYPE_ERROR) {
@@ -655,8 +1063,8 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                 $tag.css("opacity", wx.wColorBgNL);
             }
         } else {
-           
-            if ($tag.attr("id") && $tag.attr("id").indexOf("box") > -1) { 
+
+            if ($tag.attr("id") && $tag.attr("id").indexOf("box") > -1) {
                 if (wx.wColorBgWallpaper) {
                     $tag.css("background-color", wx.wColorBgWallpaper);
                 }
@@ -676,7 +1084,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
             }
         }
     }
-    
+
     if (wx.wColorFg) {
         //only attach foreground color if item hasn't been disabled
         if (!((!bInput) && (wx.wEnabled != null && wx.wEnabled == false) && wx.wColorBgDisabled && wt === WIDGET_TYPE_ERROR)) {
@@ -758,7 +1166,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
 
     //bind Enter keydown to default button
     if (wx.wDefaultButton && wt == WIDGET_TYPE_BUTTON) {
-        $tag.addClass("default"); 
+        $tag.addClass("default");
         if (wx.wBorder != BORDER_NONE) {
             $tag.addClass("defaultBorder")
         }
@@ -782,10 +1190,11 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                         data: {
                             dbg: false, //show devtools, don't close window
                             wDnD: wx.wDragAndDrop,
-                            wPrnt: WIDGET_PRNT_TYPE_WIDGET, 
+                            wPrnt: WIDGET_PRNT_TYPE_WIDGET,
                             wPosX: wx.wPositionX + 1,
                             wPosY: wx.wPositionY + 1,
-                        }
+                        },
+                        authToken: localStorage.authToken
                     };
                     localos_session.ws.send(JSON.stringify(ms));
                     return false;
@@ -836,7 +1245,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
                     event.dataTransfer.dropEffect = "copy";
                 });
 
-                /*On droping files block main screen until upload is finished and 
+                /*On droping files block main screen until upload is finished and
                 **setup files to be transferred*/
                 $dndDiv.on("drop", function $_onDrop(event) {
                     event.dataTransfer = event.originalEvent.dataTransfer;
@@ -1159,7 +1568,7 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
             **which means that we need to switch the text aligns. For the bottom we use left align for the right
             **and right align for the left to achieve the correct positioning while using rotateZ*/
             if (wx.wSetHorizAlign === null || wx.wSetHorizAlign === "LEFT") {
-                align = 'right';    
+                align = 'right';
                 classes = "legend-bottom-left";
             } else if (wx.wSetHorizAlign === "CENTER") {
                 align = 'center';
@@ -1171,7 +1580,9 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
             $tag.addClass('fieldset-bottom');
         }
         $tag.html("<legend align='" + align + "' class='" + classes + "'>" + wx.wLabel + "</legend>");
-    } else {
+ // } else {
+ // if checked and non-modifiable, then synthesize a checkbox to distinguish it from modifiable checkboxes per Bug #4438
+    } else if (wt != WIDGET_TYPE_CHECK_BOX ) {
         var $box = $("<div>").addClass("appx--box"); //container
         $box.css({
             "width": "100%"
@@ -1252,8 +1663,8 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
             }
             var clsIcon = appxGetClassIcon(wx, bTitlebar);
             $box.addClass(clsIcon);
-            /*Only append $img tag if we are not using expand proportional, 
-            **else we add class to attach image to background of main div 
+            /*Only append $img tag if we are not using expand proportional,
+            **else we add class to attach image to background of main div
             **and use css for sizing and placement*/
             if (clsIcon != "appx-icon-expand-prop") {
                 if (clsIcon == ICON_ABOVE_TEXT) {
@@ -1443,7 +1854,7 @@ function appxWidgetCheckSelected(wx) {
             break;
         case 20105:
             /*  ##DELETEUSERPREFS##
-            propName = "dockingScrollbar";  
+            propName = "dockingScrollbar";
             propValue = appx_session.getProp(propName);*/
             break;
         case 20106:
@@ -1532,6 +1943,7 @@ function Widget(boxid, html, widgetData, widgetExtraData, fullWidget) {
     self.wTilingMode = null;
     self.wBorder = null;
     self.wWidgetType = null;
+    self.wWidgetOriginalType = null;
     self.wMarginT = null;
     self.wMarginB = null;
     self.wMarginL = null;
@@ -1612,12 +2024,23 @@ function Widget(boxid, html, widgetData, widgetExtraData, fullWidget) {
     self.tableHashKey = null;
     self.tableShowRowNumbers = true;
     self.tableShowFooterBar = true;
+    self.tableShowHeading = true;
     self.tableCaseSort = false;
     self.tableShowCsvOption = true;
     self.tableShowPageOption = true;
     self.tableShowColChooser = true;
     self.tableShowLayoutSave = true;
     self.tableShowTableRefresh = true;
+    self.tableShowTableSearch = true;
+    self.tableShowTableReset = true;
+    self.tableColumnSortable = null;
+    self.tableColumnSortType = null;
+    self.tableColumnResizable = null;
+    self.tableColumnSearchable = true;
+    self.tableColumnDateFormat = null;
+    self.tableMovableColumn = true;
+    self.wAltColorFg = null;
+    self.wAltColorFg = null;
     if ($("meta[name=appx-upload-without-local]").attr("content") !== undefined && ($("meta[name=appx-upload-without-local]").attr("content") === "true")) {
         self.fileUseLocalConnector = false;
 
@@ -1828,7 +2251,7 @@ var appxGetClassText = function appxGetClassText(wx) {
 /* </position> */
 
 //comm.msg.MWidget
-//Set Drop Shadow - @SDS={visible},{distance},{size},{angle},{opacity},{color} 
+//Set Drop Shadow - @SDS={visible},{distance},{size},{angle},{opacity},{color}
 //SDS: T,250,500,50,45,green
 Widget.prototype.parseAndSetShadow = function Widget_prototype_parseAndSetShadow(token) {
     try {
@@ -1952,7 +2375,7 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
                     case "SDI":
                         this.wIconDisabled = val;
                         break;
-                    case "SDND": 
+                    case "SDND":
                         this.wDragAndDrop = val;
                         break;
                     case "SDS":
@@ -2003,9 +2426,9 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
                             this.wFontSizePercent = this.wFontSize;
                             // Convert percentage to real size
                             if (this.wWidgetType == WIDGET_TYPE_TABLE) {
-                                this.wFontSize = (this.wFontSize * .01 * (appx_session.colWidthPx) * 1.50);
+                                this.wFontSize = (this.wFontSize * .01 * (appx_session.colWidthPx) * 1.50) + parseInt(appx_session.getProp("widgetFontAdjust"));
                             } else {
-                                this.wFontSize = (this.wFontSize * .01 * (appx_session.colWidthPx) * 1.70);
+                                this.wFontSize = (this.wFontSize * .01 * (appx_session.colWidthPx) * 1.70) + parseInt(appx_session.getProp("widgetFontAdjust"));
                             }
                         }
                         break;
@@ -2279,6 +2702,9 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
                     case "TSFB": //Table Show Footer Bar
                         this.tableShowFooterBar = (val != 'F');
                         break;
+                    case "TSHB": //Table Show Header Bar
+                        this.tableShowHeading = (val != 'F');
+                        break;
                     case "TCSS":
                         this.tableCaseSort = (val == 'T');
                         break;
@@ -2294,12 +2720,62 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
                     case "TSLS": //Table Show Layout Save
                         this.tableShowLayoutSave = (val == 'T');
                         break;
-                    case "TSTR": //Table Show Table Refresh
+                    case "TSTR": //Table Show Table Reset to Default
+                        this.tableShowTableReset = (val == 'T');
+                        break;
+                    case "TSTRF": //Table Show Table Refresh
                         this.tableShowTableRefresh = (val == 'T');
+                        break;
+                    case "TSTS": //Table Show Table Refresh
+                        this.tableShowTableSearch = (val == 'T');
                         break;
                     case "USE": //MMenu()
                         this.wMenuUse = (val == 'T');
                         break;
+                    case "TCS": //Table Column Sortable
+                        this.tableColumnSortable = (val != 'F');
+                        break;
+                    case "TCST": //Table Column Sort Type
+                        switch (val) {
+                            case "INT":
+                                this.tableColumnSortType = "int";
+                                break;
+                            case "FLOAT":
+                                this.tableColumnSortType = "float";
+                                break;
+                            case "DATE":
+                                this.tableColumnSortType = "date";
+                                break;
+                            case "TEXT":
+                                this.tableColumnSortType = "text";
+                                break;
+                            default:
+                                break;
+                        }
+                        break;
+                    case "TCR": //Table Column Resizable
+                        this.tableColumnResizable = (val != 'F');
+                        break;
+                    case "TCSE": //Table Column Searchable
+                        this.tableColumnSearchable = (val != 'F');
+                        break;
+                    case "TCDF": //Table Column Date Format
+                        /*Currently "/", "-", and "." are supported as date separators. Valid formats are:
+                                                                                y,Y,yyyy for four digits year
+                                                                                YY, yy for two digits year
+                                                                                m,mm for months
+                                                                                d,dd for days. */
+                        this.tableColumnDateFormat = val;
+                        break;
+                    case "TSMC":
+                            this.tableMovableColumn = (val != 'F'); /*make the columns of table movable by mouse drag*/
+                            break;
+                    case "ALTFC":
+                            this.wAltColorFg = val; /*alternate bg color - currently used on table cells for when a row is selected. It can include opacity #RRGGBBAA*/
+                            break;
+                    case "ALTBC":
+                            this.wAltColorBg = val; /*alternate fg color - currently used on table cells for when a row is slected. It can include opacity #RRGGBBAA*/
+                            break;
                     default:
                         console.log("WP: unhandled " + key + "=" + val);
                         break;
@@ -2342,29 +2818,29 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
  * parseDataIntoPairs()
  * We need to parse the @AAA=Bbbb@CCC=Dddd data into an array.  We do this by stripping
  * any cr/lf/tab characters then replace the @ with a lf and = with a tab using a regular
- * expression so we don't accidentally replace @ or = as part od the data.  This makes it 
+ * expression so we don't accidentally replace @ or = as part od the data.  This makes it
  * easy to pull apart using split() functions to build up the array.
  */
 
 Widget.prototype.parseDataIntoPairs = function Widget_prototype_parseDataIntoPairs() {
     var widgetparams = [];
-    
+
     if( this.widgetData != undefined && this.widgetData.length > 0 ) {
-	this.widgetData.replace(/[\n\r\t]/g, "")
-	               .replace( /[@]([^@=a-z]*)[=]/g, "\n$1\t" )
-	               .split("\n")
-	               .forEach( function(macro) {
-			       if( macro.length > 0 ) {
-				   var pair = macro.split("\t");
-				   if( pair.length === 2 ) {
-				       widgetparams.push({ "key": pair[0], "value": pair[1] });
-				   } else {
-				       console.log("Widget.parseDataIntoPairs() ERROR in macro: " + macro);
-				   }
-			       }
-			   });
+        this.widgetData.replace(/[\n\r\t]/g, "")
+                       .replace( /[@]([^@=a-z]*)[=]/g, "\n$1\t" )
+                       .split("\n")
+                       .forEach( function(macro) {
+                               if( macro.length > 0 ) {
+                                   var pair = macro.split("\t");
+                                   if( pair.length === 2 ) {
+                                       widgetparams.push({ "key": pair[0], "value": pair[1] });
+                                   } else {
+                                       console.log("Widget.parseDataIntoPairs() ERROR in macro: " + macro);
+                                   }
+                               }
+                           });
     }
-    
+
     return widgetparams;
 }
 
@@ -2472,7 +2948,7 @@ appx_session.tableOptions = function (coldata, elid, gridName, pagerName, tableI
             $(this).parent().css({
                 "z-index": 19999,
                 "width": "325px"
-                
+
             });
             $(this).css({
                 "z-index": 19999,
@@ -2528,18 +3004,24 @@ function createWidgetTagObject() {
             }
         }
         if (command != null) {
-            $tag.attr("id", addClientId("widget_sac_" + command, widget.wClientId));
-            $tag.click(function $_click() {
-                var opt = parseInt(getClientId(this.id).substring(11));
-                if ((opt >= 250 && opt <= 255) || $(this).hasClass("setMoveCursor")) {
-                    var col = $(this).data("col");
-                    var row = $(this).data("row");
-                    if (col && row) {
-                        appxPutCursor(col, row);
+
+            if (command === OPT_WHATS_THIS) {
+                $tag.addClass("appx-title-button-help");
+            }
+            else {
+                $tag.attr("id", addClientId("widget_sac_" + command, widget.wClientId));
+                $tag.click(function $_click() {
+                    var opt = parseInt(getClientId(this.id).substring(11));
+                    if ((opt >= 250 && opt <= 255) || $(this).hasClass("setMoveCursor")) {
+                        var col = $(this).data("col");
+                        var row = $(this).data("row");
+                        if (col && row) {
+                            appxPutCursor(col, row);
+                        }
                     }
-                }
-                appxwidgetcallback(getClientId(this.id).substring(11));
-            });
+                    appxwidgetcallback(getClientId(this.id).substring(11));
+                });
+            }
         }
         if (widget.wSetMoveCursor) {
             $tag.addClass("setMoveCursor");
@@ -2569,7 +3051,12 @@ function createWidgetTagObject() {
         return $tag;
     }
     appx_session.createWidgetTag[WIDGET_TYPE_CHECK_BOX] = function widget_checkbox(widget, $tag, item) {
-        $tag = $("<input type='checkbox'>");
+// if checked and non-modifiable, then synthesize a checkbox to distinguish it from modifiable checkboxes per Bug #4438
+        if (item.data == "1" && !appxIsModifiable( item ) ) {
+            $tag = $("<label class='checkbox-label' > <input type='checkbox' value='1' checked='checked' class='item_with_widget appxitem notranslate appxfield disabled' style='position: absolute; left: 296px; top: 3px; height: 21px; font-size: 13.36px; overflow: hidden; white-space: pre; z-index: 1990;' > <span class='checkbox-custom rectangular' ></span> </label>");
+        } else {
+            $tag = $("<input type='checkbox'>");
+        }
         if (item.data == "1") {
             $tag.prop("checked", true);
             $tag.data("checked", 2);
@@ -2648,6 +3135,12 @@ function createWidgetTagObject() {
                 $tag = $("<textarea>");
                 $tag.val(item.data);
                 $tag.addClass("ckeditor");
+                if(widget.wHtmlViewerType == "inline"){
+                    $tag.attr("decoration","no");
+                }
+                else{
+                    $tag.attr("decoration","yes");
+                }
                 break;
         }
         return $tag
@@ -2692,6 +3185,7 @@ function createWidgetTagObject() {
         var widgetData = widget.widgetData.split("@");
         var widgetSHS;
         var widgetSFIK;
+        var widgetSPCB = "";
         var widgetRowCol = widget.wPositionY + "_" + widget.wPositionX;
         for (var i = 0; i < widgetData.length; i++) {
             if (widgetData[i].indexOf("SHS=") !== -1) {
@@ -2700,12 +3194,15 @@ function createWidgetTagObject() {
             if (widgetData[i].indexOf("SFIK=") !== -1) {
                 widgetSFIK = widgetData[i].substring(5);
             }
+            if (widgetData[i].indexOf("SPCB=") !== -1) {
+                widgetSPCB = widgetData[i].substring(5);
+            }
         }
 
         var tableID = widgetSHS + "_" + widgetSFIK + "_" + widgetRowCol;
         $tag = $("<div>")
             .addClass("appxtablewidget")
-            .attr("id", addClientId("appxitem_" + widget.wPositionX + "_" + widget.wPositionY, widget.wClientId))
+            .attr("id", addClientId("appxitem_" + widget.wPositionX + "_" + widget.wPositionY + "_" + widgetSHS + "_" + widgetSPCB, widget.wClientId))
             .data("action", {
                 "command": widget.wCommand,
                 "command2": widget.wCommand2
@@ -2717,7 +3214,9 @@ function createWidgetTagObject() {
             .data("TSPO", widget.tableShowPageOption)
             .data("TSCC", widget.tableShowColChooser)
             .data("TSLS", widget.tableShowLayoutSave)
-            .data("TSTR", widget.tableShowTableRefresh);
+            .data("TSTR", widget.tableShowTableReset)
+            .data("TSTRF", widget.tableShowTableRefresh)
+            .data("TSTS", widget.tableShowTableSearch);
 
         return $tag;
     }
@@ -2753,6 +3252,7 @@ function createWidgetTagObject() {
             if (!appxIsMasked(item)) {
                 $tag.val(item.data.replace("\n", " \n"));
             }
+
         }
         return $tag;
     }
@@ -3054,3 +3554,4 @@ const WIDGET_USAGE_POPUP = 4;
 
 createWidgetTagObject();
 createOptionOverride();
+

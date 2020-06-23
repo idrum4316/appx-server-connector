@@ -1,4 +1,4 @@
-﻿/**************************************************************************
+/**************************************************************************
 **@File: appx-client-automaticLoginTemplate.js
 **@Company: APPX Software, Inc.
 **@Programmer: John Nelson

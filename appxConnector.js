@@ -1,7 +1,7 @@
-﻿"use strict";
+"use strict";
 
-const serverConnectorVersionStr = "6.0.0.19011401";
-const serverConnectorVersionNum = 60000.19011401;
+const serverConnectorVersionStr = "6.0.0.20040817";
+const serverConnectorVersionNum = 60000.20040817;
 
 const cluster = require('cluster');
 const os = require('os');
@@ -10,20 +10,23 @@ const os = require('os');
 //  Configuration Section - Begin
 //  *********************************************************
 
-const connectorPort    = process.env.APPX_CONNECTOR_PORT;    // Port the appxConnector listens on for client connections
-const workers          = os.cpus().length;                   // Number of worker processes spawned to listen for incoming connections
+const connectorPort         = process.env.APPX_CONNECTOR_PORT;    // Port the appxConnector listens on for client connections
+const workers               = os.cpus().length;                   // Number of worker processes spawned to listen for incoming connections
 
-const sslEnabled       = false;                              // Are we using SSL for our connections?
-const sslPrivateKey    = "/etc/pki/tls/private/appx.key";
-const sslCertificate   = "/etc/pki/tls/certs/appx.com.crt";
-const sslCertAuthority = "/etc/pki/tls/certs/gd_bundle.crt";
+const sslEnabled            = true;                               // Are we using SSL for our connections?
+const sslPrivateKey         = "/etc/pki/tls/private/appx.com.key";
+const sslCertificate        = "/etc/pki/tls/certs/appx.com.crt";
+const sslCertAuthority      = "/etc/pki/tls/certs/ca-bundle.crt";
 
-const cryptoEnabled    = true;                               // Are we using Crypto to encrypt traffic?  Not needed  if SSL is on.
-const mongoDatabase    = "AppxDatabaseCache";                // The name of the database in Mongo we use to cache all of our data
-const mongoHost        = "localhost";                        // The hostname of the server mongo is running on
-const mongoPort        = 27017;                              // The port number on that server that mongo is listening on
-const appxdebug        = false;                              // Dump debug log info to stdout of the worker process?
-const appxlog          = false;                              // Create a disk log file?
+const cryptoEnabled         = false;                              // Are we using Crypto to encrypt traffic?  Must be off if SSL is on
+const mongoDatabase         = "AppxDatabaseCache";                // The name of the database in Mongo we use to cache all of our data
+const mongoHost             = "localhost";                        // The hostname of the server mongo is running on
+const mongoPort             = 27017;                              // The port number on that server that mongo is listening on
+const appxdebug             = false;                              // Dump debug log info to stdout of the worker process?
+const appxlog               = false;                              // Create a disk log file?
+const useoldsocket			= false;							  // If set to true, the non SSL capable APPX engine socket and logic are used 	
+
+const appxLocalConnectorCert= null;   							  // If local connector needs certificate authority point to it here  
 
 //  *********************************************************
 //  Configuration Section - End
@@ -31,6 +34,19 @@ const appxlog          = false;                              // Create a disk lo
 
 function dlog( msg, obj ) {
     if( appxdebug ) {
+	var nowStr = new Date(Date.now()).toISOString();
+	if( obj ) {
+	    console.log( nowStr + " - " + msg + "..." );
+	    console.dir(obj);
+	}
+	else {
+	    console.log( nowStr + " - " + msg );
+	}
+    }
+}
+
+function dlogForce( msg, obj ) {
+    if( true ) {
 	var nowStr = new Date(Date.now()).toISOString();
 	if( obj ) {
 	    console.log( nowStr + " - " + msg + "..." );
@@ -67,12 +83,17 @@ function masterCode() {
     //  *********************************************************
 
     var MongoClient = require('mongodb').MongoClient;
+    var mongoOptions = {
+                        serializeFunctions: true,
+                        useNewUrlParser: true,
+                        useUnifiedTopology: true
+                        };
     var mongoUrl = 'mongodb://' + mongoHost + ':' + mongoPort + '/' + mongoDatabase + '?socketTimeoutMS=30000';
     var mongoCacheDb = null;
 
 
     // Make sure we can connect to Mongo
-    MongoClient.connect(mongoUrl, { serializeFunctions: true, useNewUrlParser: true }, function mongoClient_connectCallback(err, client) {
+    MongoClient.connect(mongoUrl, mongoOptions, function mongoClient_connectCallback(err, client) {
         if (err) {
             dlog("appxConnector - mongo.connect() failed: " + err);
         } else {
@@ -167,7 +188,7 @@ var mongoStatus = "Running";
     Library Imports - Begin
 *************************************************************/
 var atob = require('atob');
-var StringLib = require('string');
+var StripHtml = require("string-strip-html");
 var GridFSBucket = require('mongodb').GridFSBucket;
 var MongoClient = require('mongodb').MongoClient;
 var MongoServer = require('mongodb').Server;
@@ -180,16 +201,22 @@ var hexy = require('hexy');
 var crypto = require('crypto');
 var node_cryptojs = require('node-cryptojs-aes');
 var iconv = require('iconv-lite');
+var appxSocket = require('./appxsocket');
+
 /************************************************************
     Library Imports - End
 *************************************************************/
 
-// Global variabls and Objects
+// Global variables and Objects
 var mongoUrl = 'mongodb://' + mongoHost + ':' + mongoPort + '/' + mongoDatabase + '?socketTimeoutMS=30000';
 var mongoCacheDb = null;
+var mongoOptions = {
+	useNewUrlParser: true,
+    useUnifiedTopology: true
+};
 
-MongoClient.connect(mongoUrl, { useNewUrlParser: true }, function mongoClient_connectCallback(err, client) {
-    mongoCacheDb = client.db("AppxDatabaseCache");
+MongoClient.connect(mongoUrl, mongoOptions, function mongoClient_connectCallback(err, client) {
+    mongoCacheDb = client.db(mongoDatabase);
     if (err) {
         mongoStatus = "Error";
     } else {
@@ -228,6 +255,12 @@ function createWebSocket() {
     var CryptoJS = node_cryptojs.CryptoJS;
     var JsonFormatter = node_cryptojs.JsonFormatter;
     var uploadLocation;
+
+	// Create the arguments we'll be using to configure the APPX SSL socket
+    var conf = {
+        ProviderConfig: {},
+		DebugConfig: {}
+    };
 
     if (sslEnabled)
         var https = require('https');
@@ -295,16 +328,60 @@ function createWebSocket() {
         //will we need this on reconnect and new session?
         //may want to add user/pass to mongodb to challenge
         appxprocessor.mongoconnector = new appxTableDataHandler();
+		
+		if (useoldsocket) {
+			// Create a socket client to APPX
+			var client_appx_socket = new net.Socket();
+			appxprocessor.clientsocket = client_appx_socket;
+		}
+		  else {
+			// Create a placeholder for a socket client to APPX
+			var client_appx_socket;
+		}
+		
+		// Setup the debug parameters 
+		conf.DebugConfig.stackWidth = 22;
+		conf.DebugConfig.STAT = { "desc": "STATUS ", "trace": false, "show": true  }; // Log Status messages
+		conf.DebugConfig.ERROR = { "desc": "ERROR  ", "trace": true,  "show": true };  // Log Error messages
+		conf.DebugConfig.WARN =	{ "desc": "WARNING", "trace": false, "show": false }; // Log Warning messages
+		conf.DebugConfig.INFO =	{ "desc": "INFO   ", "trace": false, "show": false }; // Log Informational messages
+		conf.DebugConfig.DATA =	{ "desc": "DATA   ", "trace": false, "show": false }; // Log Data summary information
+		conf.DebugConfig.DUMP =	{ "desc": "DUMP   ", "trace": false, "show": false }; // Log Data detailed strings/dumps
+		conf.DebugConfig.ALL = { "desc": "       ", "trace": false, "show": true } ; // Log all of the above
+		// Make the debug parameters global for the APPX socket's use
+		global.debugConfig = conf.DebugConfig;
+	
+		// Setup as global, the APPX socket logging function 
+		global.debugConfig.log = function debug_log(type, str, stk) {
+			if (appxdebug) {
+				if (type.show || this.ALL.show) {
+					var stack = stk ? stk : new Error().stack;
+					var line = stack.split('\n')[2]
+					.replace(global.dirname, '.')
+					.replace(/^.*[.][/]/, '')
+					.replace(/[:][^:]*[)]$/, '')
+					.concat(' '.repeat(this.stackWidth))
+					.substring(0, this.stackWidth);
 
-        // Create a socket client to APPX
-        var client_appx_socket = new net.Socket();
-        appxprocessor.clientsocket = client_appx_socket;
+					console.log('[ %s %s] %s', type.desc, line, str);
+
+					if (type.trace)
+						console.trace();
+				}
+			}
+		};
 
         // Map a function to cleanup on websocket close event
         ws.on('close', function ws_onCloseCallback(evt) {
             dlog("Client side socket closing: " + Date.now());
             logactivity('ws client disconnected... #:' + myid);
-            client_appx_socket.destroy();
+			
+			if (useoldsocket) {
+				client_appx_socket.destroy();
+			}				
+			  else if (typeof client_appx_socket !== 'undefined') {
+				client_appx_socket.destroy();
+			}
             appxprocessor.end();
         });
 
@@ -314,50 +391,140 @@ function createWebSocket() {
             dlog("error: " + err);
             appxprocessor.end();
         });
+		
+		if (useoldsocket) {
+			// Add a 'close' event handler for the engine socket
+			client_appx_socket.on('close', function client_appx_socket_onCloseCallback(evt) {
+				dlog("Engine side socket closing: " + Date.now());
+				appxprocessor.end();
+				logactivity('ALERT:  Connection closed');
+			});
 
-        // Add a 'close' event handler for the engine socket
-        client_appx_socket.on('close', function client_appx_socket_onCloseCallback(evt) {
-            dlog("Engine side socket closing: " + Date.now());
-            appxprocessor.end();
-            logactivity('ALERT:  Connection closed');
-        });
+			// Map a function to handle data from the APPX server
+			client_appx_socket.on('data', function client_appx_socket_onDataCallback(data) {
+				// push data from the server onto the clients buffer(an array)
+				if (appxIsToJsonAnArray) {
+					appxprocessor.rtndata = appxprocessor.rtndata.concat(data.toJSON(), new Array());
+				}
+				else {
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from(data));
+				}
+				// if we have received enough bytes to satify the next parser request
+				// run the parser before receiving any more data.
+				if (appxprocessor.needbytes <= appxprocessor.rtndata.length || appxprocessor.rtndata.length >= appxprocessor.maxByteSize || (appxprocessor.rtndata.length + appxprocessor.byteCount) >= appxprocessor.needbytes ) {
+					var prcd;
+					try {
+						prcd = appxprocessor.appxprocessmsg();
+					}
+					catch (ex) {
+						logactivity("appxprocessmsg() failed, ex=" + ex);
+						dlog(ex.stack);
+					}
+				}
+			});
 
-        // Map a function to handle data from the APPX server
-        client_appx_socket.on('data', function client_appx_socket_onDataCallback(data) {
-            // push data from the server onto the clients buffer(an array)
-            if (appxIsToJsonAnArray) {
-                appxprocessor.rtndata = appxprocessor.rtndata.concat(data.toJSON(), new Array());
-            }
-            else {
-                arrayPush.apply(appxprocessor.rtndata, Buffer.from(data));
-            }
-            // if we have received enough bytes to satify the next parser request
-            // run the parser before receiving any more data.
-            if (appxprocessor.needbytes <= appxprocessor.rtndata.length || appxprocessor.rtndata.length >= appxprocessor.maxByteSize || (appxprocessor.rtndata.length + appxprocessor.byteCount) >= appxprocessor.needbytes ) {
-                var prcd;
-                try {
-                    prcd = appxprocessor.appxprocessmsg();
-                }
-                catch (ex) {
-                    logactivity("appxprocessmsg() failed, ex=" + ex);
-                    dlog(ex.stack);
-                }
-            }
-        });
+			// Add an 'end' event handler for the client socket
+			client_appx_socket.on('end', function client_appx_socket_onEndCallback() {
+				logactivity('ALERT:  client_appx_socket disconnected');
+				ws.close();
+			});
 
-        // Add an 'end' event handler for the client socket
-        client_appx_socket.on('end', function client_appx_socket_onEndCallback() {
-            logactivity('ALERT:  client_appx_socket disconnected');
-            ws.close();
-        });
+			// Map a function to log client error event
+			client_appx_socket.on('error', function client_appx_socket_onErrorCallback(err) {
+				logactivity('ERROR:  client_appx_socket error \n\n' + err);
+				dlog("client-socket error: " + err);
+				ws.close();
+				appxprocessor.end();
+			});
+		}
+		else {
+				
+			// A 'close' event handler for the engine socket
+			function appxsocket_onCloseCallback(evt) {
+				dlog("Engine side socket closing: " + Date.now());
+				appxprocessor.end();
+				logactivity('ALERT:  Connection closed');
+			};
 
-        // Map a function to log client error event
-        client_appx_socket.on('error', function client_appx_socket_onErrorCallback(err) {
-            logactivity('ERROR:  client_appx_socket error \n\n' + err);
-            dlog("client-socket error: " + err);
-            ws.close();
-            appxprocessor.end();
-        });
+			// A 'data' event handler for the engine socket
+			function appxsocket_onDataCallback(data) {
+				// push data from the server onto the clients buffer(an array)
+				if (appxIsToJsonAnArray) {
+					appxprocessor.rtndata = appxprocessor.rtndata.concat(data.toJSON(), new Array());
+				}
+				else {
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from(data));
+				}
+				// if we have received enough bytes to satify the next parser request
+				// run the parser before receiving any more data.
+				if (appxprocessor.needbytes <= appxprocessor.rtndata.length || appxprocessor.rtndata.length >= appxprocessor.maxByteSize || (appxprocessor.rtndata.length + appxprocessor.byteCount) >= appxprocessor.needbytes ) {
+					var prcd;
+					try {
+						prcd = appxprocessor.appxprocessmsg();
+					}
+					catch (ex) {
+						logactivity("appxprocessmsg() failed, ex=" + ex);
+						dlog(ex.stack);
+					}
+				}
+			};
+
+			// An 'end' event handler for the engine socket
+			function appxsocket_onEndCallback() {
+				logactivity('ALERT:  client_appx_socket disconnected');
+				ws.close();
+			};
+
+			// An 'error' event handler for the engine socket
+			function appxsocket_onErrorCallback(err) {
+				logactivity('ERROR:  client_appx_socket error \n\n' + err);
+				dlog("client-socket error: " + err);
+				ws.close();
+				appxprocessor.end();
+			};
+
+			// A 'loggedin' event handler for the APPX socket class
+			var onLoggedIn = function appxsocket_onLoggedIn(socket, loginstatus, servermessage) {
+				client_appx_socket = socket;
+				appxprocessor.clientsocket = client_appx_socket;
+				remove_listener(socket, 'close');
+				remove_listener(socket, 'data');
+				remove_listener(socket, 'end');
+				remove_listener(socket, 'error');
+				socket.on('close', appxsocket_onCloseCallback);
+				socket.on('data', appxsocket_onDataCallback);
+				socket.on('end', appxsocket_onEndCallback);
+				socket.on('error', appxsocket_onErrorCallback);
+
+				// When this 'loggedin' event is called, the 'loginstatus' as to whether we have successfully or failed to logged in to APPX has already been recieved.
+				// That 'loginstatus', regardless of it's value, is considered to be a part of a longer message that we will either receive on the socket
+				// 	if the login was successful or will have already received if the handshake or login has failed.
+				// Since the 'loginstatus' is in essence 'lost', we must add it to the receive buffer so it is a part of that longer message and
+				// in the case of a login failure the 'servermessage' must be added too.				
+				if (loginstatus) { 
+					appxprocessor.rtndata.length = 0;
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from("0001", 'hex'));
+					appxprocessor.appxprocessmsg();
+				} 
+				  else {
+					appxprocessor.rtndata.length = 0;
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from("0000000000", 'hex'));
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from(servermessage.length.toString(16), 'hex'));
+					appxprocessor.appxprocessmsg();
+					arrayPush.apply(appxprocessor.rtndata, Buffer.from(servermessage, 'utf8'));
+					appxprocessor.appxprocessmsg();
+				} 
+			};
+			
+			function remove_listener(object, name) {
+				var listeners = [];
+				listeners = object.listeners(name);
+				for (var i = 0; i < listeners.length; i++) {
+					object.off(name, listeners[i]);
+				}
+				logactivity('INFO:  Removing ' + listeners.length + ' listeners from event ' + name);
+			}
+		}
 
         // Map a function to handle web client message events
         ws.on('message', function ws_onMessageCallback(messageCrypt) {
@@ -408,58 +575,153 @@ function createWebSocket() {
                             // may not use this
                             break;
                         case "appxlogin":
-                            //Connect to Appx Connection Manager
-                            client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
-                                logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
-                            });
-                            //created and send login to APPX
-                            appxprocessor.uid = ab2str(ms.args[2]);
-                            var tlogin = Buffer.alloc(331);
-                            tlogin.write(ms.args[2]);
-                            tlogin.write(ms.args[3], 21);
-                            client_appx_socket.write(tlogin);
-                            appxprocessor.cacheCollection = ms.args[0] + "_" + ms.args[1];
-                            appxprocessor.hostCollection = ms.args[0] + "/" + ms.args[1];
+							if (useoldsocket) {
+								//Connect to Appx Connection Manager
+								client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
+									logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
+								});
+								//created and send login to APPX
+								appxprocessor.uid = ab2str(ms.args[2]);
+								var tlogin = Buffer.alloc(331);
+								tlogin.write(ms.args[2]);
+								tlogin.write(ms.args[3], 21);
+								client_appx_socket.write(tlogin);
+								appxprocessor.cacheCollection = ms.args[0] + "_" + ms.args[1];
+								appxprocessor.hostCollection = ms.args[0] + "/" + ms.args[1];
+							}
+							  else {
+								  
+								// Setup the login parameters 
+								conf.ProviderConfig.host = ms.args[0];
+								conf.ProviderConfig.port = ms.args[1];
+								conf.ProviderConfig.appxuser = ms.args[2];
+								conf.ProviderConfig.appxpass = ms.args[3];
+								conf.ProviderConfig.runApplication = null;
+								conf.ProviderConfig.runDatabase = null;
+								conf.ProviderConfig.runProcessType = null;
+								conf.ProviderConfig.runProcess = null;
+								conf.ProviderConfig.filler = null;
+								conf.ProviderConfig.reconnectId = null;
+								conf.ProviderConfig.appxtoken = "";
+								conf.ProviderConfig.enablessl = sslEnabled;
+								// Make the login parameters global for the APPX socket's use
+								global.providerConfig = conf.ProviderConfig;
+								
+								// Save the configuration (We don't use but we could and this how we could use it)		
+								//var config_filename = 'default-' + conf.ProviderConfig.host + '_'  + conf.ProviderConfig.port
+								//fs.writeFileSync('config/' + config_filename + '.json', JSON.stringify(conf, null, 4));
+								
+								
+								// Setup the APPX Socket for a send (test code for the 'data connector') 
+								//var returnResults;
+								//global.appxsocket = new appxSocket();
+								//global.appxsocket.send("Test", function(result) { returnResults = result; });
+				
+								// Setup the APPX Socket
+								var appxsocket = new appxSocket();
+							
+								// Request an APPX Login
+								//appxsocket.login(appxsocket_onLoggedIn);
+								appxsocket.login(onLoggedIn);
+							
+								appxprocessor.uid = ab2str(ms.args[2]);
+								appxprocessor.cacheCollection = ms.args[0] + "_" + ms.args[1];
+								appxprocessor.hostCollection = ms.args[0] + "/" + ms.args[1];
+							}
                             break;
                         case "appxreconnect":
-                            //Connect to Appx Connection Manager
-                            client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
-                                logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
-                            });
-                            //created and send login to APPX
-                            var treconnect = Buffer.alloc(331);
-                            treconnect.write(ms.args[2]);
-                            treconnect.write(ms.args[3], 21);
-                            for (var rc = 0; rc < ms.args[4].length; rc++) {
-                                treconnect[320 + rc] = ms.args[4].charCodeAt(rc);
-                            }
-                            client_appx_socket.write(treconnect);
+							if (useoldsocket) {
+								//Connect to Appx Connection Manager
+								client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
+									logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
+								});
+								//created and send login to APPX
+								var treconnect = Buffer.alloc(331);
+								treconnect.write(ms.args[2]);
+								treconnect.write(ms.args[3], 21);
+								for (var rc = 0; rc < ms.args[4].length; rc++) {
+									treconnect[320 + rc] = ms.args[4].charCodeAt(rc);
+								}
+								client_appx_socket.write(treconnect);
+							}
+							  else {
+								//Connect to Appx Connection Manager
+								appxprocessor.uid = ab2str(ms.args[2]);
+							
+								// Setup the login parameters 
+								conf.ProviderConfig.host = ms.args[0];
+								conf.ProviderConfig.port = ms.args[1];
+								conf.ProviderConfig.appxuser = ms.args[2];
+								conf.ProviderConfig.appxpass = ms.args[3];
+								conf.ProviderConfig.runApplication = ms.args[4];
+								conf.ProviderConfig.reconnectId = 'reconnect';
+								conf.ProviderConfig.appxtoken = "";
+								conf.ProviderConfig.enablessl = sslEnabled;
+								// Make the login parameters global for the APPX socket's use
+								global.providerConfig = conf.ProviderConfig;
+								
+								// Setup the APPX Socket
+								var appxsocket = new appxSocket();
+							
+								// Request an APPX Login
+								//appxsocket.login(appxsocket_onLoggedIn);
+								appxsocket.login(onLoggedIn);
+							}
                             break;
                         case "appxnewsession":
-                            //Connect to Appx Connection Manager
-                            client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
-                                logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
-                            });
-                            //created and send login to APPX
-                            var tlogin = Buffer.alloc(331);
-                            tlogin.write(ms.args[2]);
-                            tlogin.write(ms.args[3], 21);
-                            //add 32 bytes for host and remap
-                            if (ms.args.length > 4) {
-                                if (ms.args[4]) {
-                                    tlogin.write(ms.args[4], 74);
-                                }
-                                if (ms.args[5]) {
-                                    tlogin.write(ms.args[5], 77);
-                                }
-                                if (ms.args[6]) {
-                                    tlogin.write(ms.args[6], 80);
-                                }
-                                if (ms.args[7]) {
-                                    tlogin.write(ms.args[7], 90);
-                                }
-                            }
-                            client_appx_socket.write(tlogin);
+							if (useoldsocket) {
+								client_appx_socket.connect(parseInt(ms.args[1]), ms.args[0], function client_appx_socket_connectCallback() {
+									logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
+								});
+								//created and send login to APPX
+								var tlogin = Buffer.alloc(331);
+								tlogin.write(ms.args[2]);
+								tlogin.write(ms.args[3], 21);
+								//add 32 bytes for host and remap
+								if (ms.args.length > 4) {
+									if (ms.args[4]) {
+										tlogin.write(ms.args[4], 74);
+									}
+									if (ms.args[5]) {
+										tlogin.write(ms.args[5], 77);
+									}
+									if (ms.args[6]) {
+										tlogin.write(ms.args[6], 80);
+									}
+									if (ms.args[7]) {
+										tlogin.write(ms.args[7], 90);
+									}
+								}
+								client_appx_socket.write(tlogin);
+							}
+							  else {
+								  
+								//Connect to Appx Connection Manager
+								appxprocessor.uid = ab2str(ms.args[2]);
+							
+								// Setup the login parameters 
+								conf.ProviderConfig.host = ms.args[0];
+								conf.ProviderConfig.port = ms.args[1];
+								conf.ProviderConfig.appxuser = ms.args[2];
+								conf.ProviderConfig.appxpass = ms.args[3];
+								conf.ProviderConfig.runApplication = ms.args[4];
+								conf.ProviderConfig.runDatabase = ms.args[5];
+								conf.ProviderConfig.runProcessType = ms.args[6];
+								conf.ProviderConfig.runProcess = ms.args[7];
+								conf.ProviderConfig.filler = ms.args[8];
+								conf.ProviderConfig.reconnectId = ms.args[9];
+								conf.ProviderConfig.appxtoken = "";
+								conf.ProviderConfig.enablessl = sslEnabled;
+								// Make the login parameters global for the APPX socket's use
+								global.providerConfig = conf.ProviderConfig;
+								
+								// Setup the APPX Socket
+								var appxsocket = new appxSocket();
+							
+								// Request an APPX Login
+								//appxsocket.login(appxsocket_onLoggedIn);
+								appxsocket.login(onLoggedIn);
+							}
                             break;
                         case "appxmessage":
                                 var b = Buffer.from(ms.args);
@@ -704,17 +966,32 @@ function createWebSocket() {
                             break;
                         case "appxMongoToEngine":
                             var fileData = Buffer.alloc(0);
-                            var fileName = encodeURI(ms.fileName);
+                            var fileName;
+                            /*
+                            ** check if we have mongoFileName use it if not use fileName, MongoFileName has more
+                            ** escaping on the file path to make it more suitable for mongoDB
+                            */
+                            if(ms.mongoFileName !== undefined && ms.mongoFileName.length > 0){
+                                fileName = encodeURI(ms.mongoFileName);
+                            }
+                            else{
+                                fileName = encodeURI(ms.fileName);
+                            }
+
                             var gb = new GridFSBucket(mongoCacheDb, { bucketName: appxprocessor.cacheCollection });
                             var downloadStream = gb.openDownloadStreamByName(fileName);
                             var fileDataLength = null;
                             var id = null;
+
+							dlogForce("appxConnector appxMongoToEngine filename="+fileName);
+
                             downloadStream.on("error", function downloadStream_onError(error) {
-                                dlog("appxMongoToEngine downloadStream error: " + error);
+                                dlogForce("appxConnector appxMongoToEngine downloadStream error: " + error);
                                 client_appx_socket.write(Buffer.from([3, 0]));
                             });
 
                             downloadStream.on("data", function downloadStream_onData(data) {
+								dlogForce("appxConnector appxMongoToEngine sending data length="+data.length);
                                 if (fileDataLength === null) {
                                     client_appx_socket.write(Buffer.from([3, 1]));
                                     fileDataLength = this.s.file.chunkSize;
@@ -731,6 +1008,7 @@ function createWebSocket() {
                                 }
                             });
                             downloadStream.on("end", function downloadStream_onEnd() {
+                                dlogForce("appxConnector appxMongoToEngine END");
                                 try {
                                     if (id === null) {
                                         client_appx_socket.write(Buffer.from(([3, 1])));
@@ -742,15 +1020,15 @@ function createWebSocket() {
                                     client_appx_socket.write(Buffer.from(hton32(0)));
 
                                     //send Filename Length
-                                    client_appx_socket.write(Buffer.from(hton32(fileName.length)));
+                                    client_appx_socket.write(Buffer.from(hton32(ms.fileName.length)));
 
-                                    client_appx_socket.write(Buffer.from(fileName));
+                                    client_appx_socket.write(Buffer.from(ms.fileName));
 
                                     //send client status
                                     client_appx_socket.write(Buffer.from(([3, 1])));
                                 } catch (e) {
-                                    dlog(e);
-                                    dlog(e.stack);
+                                    dlogForce(e);
+                                    dlogForce(e.stack);
                                 }
                             });
                             break;
@@ -901,7 +1179,8 @@ function APPXProcessor(ws, id) {
     // Server Message Handler Functions
     // Processes server messages
     this.appxprocessmsg = function APPXProcessor_appxprocessmsg() {
-        while ((this.rtndata.length > 0 && (this.rtndata.length >= this.needbytes || this.rtndata.length > this.maxByteSize || this.rtndata.length + this.byteCount >= this.needbytes)) || (this.needbytes == 0 && this.curhandler > 0)) {
+		var done = false;
+		while ((!done) && ((this.rtndata.length > 0 && (this.rtndata.length >= this.needbytes || this.rtndata.length > this.maxByteSize || this.rtndata.length + this.byteCount >= this.needbytes)) || (this.needbytes == 0 && this.curhandler > 0))) {
             if (rotLog) {
                 dlog("Server message: " + this.curhandler);
             }
@@ -1068,8 +1347,8 @@ function APPXProcessor(ws, id) {
                         break;
                     }
                 default:
-                    {
-                        //exit;
+                    { // WE'RE DONE, EXIT LOOP 
+						done = true;
                         break;
                     }
             }
@@ -1258,7 +1537,10 @@ function APPXProcessor(ws, id) {
                     ms.hasdata = true;
                     ms.transresult = "SUCCESS";
                     ms.haserrors = false;
-                    ms.errormsg = "";
+                    ms.errormsg = "";          
+                    if(appxLocalConnectorCert != null){
+                        ms.ca = fs.readFileSync(appxLocalConnectorCert); //local connector certificate authority
+                    }
                     sendMessage(ws, ms);
 
                     this.curhandler = 0;
@@ -1397,7 +1679,7 @@ function APPXProcessor(ws, id) {
 
         this.serverFeatureMask = new DataView(new Uint8Array(bytes).buffer).getUint32(0);
         var ms = new Message();
-        ms.data = data;
+        ms.data = this.serverFeatureMask;
         ms.hasdata = "yes";
         ms.haserrors = "no";
         ms.type = "APPXFEATURES";
@@ -1420,7 +1702,7 @@ function APPXProcessor(ws, id) {
         this.serverExtendedFeatureMask = new DataView(new Uint8Array(bytes).buffer).getUint32(0);
 
         var ms = new Message();
-        ms.data = data;
+        ms.data = this.serverExtendedFeatureMask;
         ms.hasdata = "yes";
         ms.haserrors = "no";
         ms.type = "APPXEXTENDEDFEATURES";
@@ -2710,6 +2992,7 @@ function APPXProcessor(ws, id) {
 
                 logactivity("my url=" + ab2str(myfilerecbytes));
                 var fileName = ab2str(myfilerecbytes).trim();
+	        dlogForce("appxConnector appxreceivefilehandler fileName="+fileName);
 
                 /*If we put a file into mongo for server to grab then we get file from
                 **mongo and send file to server. Else we use the old method involving
@@ -2877,7 +3160,7 @@ function APPXProcessor(ws, id) {
                     this.byteCount += this.maxByteSize;
                     mywidget.widget_extradata = ab2str(this.rtndata.slice(0, this.maxByteSize));
                 }
-
+                //logactivity("widgetExtraData=" + mywidget.widget_extradata);
                 this.currentData = this.leftoverData;
                 this.leftoverData = mywidget.widget_extradata.substring(mywidget.widget_extradata.lastIndexOf("\"]") + 3);
                 this.currentData += mywidget.widget_extradata.substring(0, mywidget.widget_extradata.lastIndexOf("\"]") + 2);
@@ -2885,6 +3168,7 @@ function APPXProcessor(ws, id) {
                 if (this.currentData.substring(0, 1) === ",") {
                     this.currentData = this.currentData.substring(1);   
                 }
+                //logactivity("currentData=" + this.currentData);
                 mywidget.pcb = StrGetSubstr(mywidget.widget_data, "@SPCB=", "@");
                 
                 var lookupHash = crypto.createHash('sha1');
@@ -2905,25 +3189,25 @@ function APPXProcessor(ws, id) {
                         // Put row data into server temporary database
                         if (!mywidget.widget_extrareuse) {
                             self.pendingInserts++;
-			    if( mRemove ) {
-				mywidget.deleteInProgress = true;
-				self.mongoconnector.insertappxtabledata(self, mywidget.datalookupid, myData.rows, mRemove, mywidget);
-			    }
-			    else {
-				self.mongoconnector.insertappxtabledata(self, mywidget.datalookupid, myData.rows, mRemove, mywidget);
-			    }
+                            if( mRemove ) {
+                                mywidget.deleteInProgress = true;
+                                self.mongoconnector.insertappxtabledata(self, mywidget.datalookupid, myData.rows, mRemove, mywidget);
+                            }
+                            else {
+                                self.mongoconnector.insertappxtabledata(self, mywidget.datalookupid, myData.rows, mRemove, mywidget);
+                            }
                         }
                         if (myData.table.selectedKeys && (myData.table.selectedKeys.length > 0) && (JSON.stringify(myData.table.selectedKeys) !== JSON.stringify(self.selectedKeys))) {
                             self.selectedKeys = self.selectedKeys.concat(myData.table.selectedKeys);
                             self.selectedRows = self.selectedRows.concat(myData.table.selectedRows);
                         }
-                        // Send table definition on to client
+                        // Send table definition on to client 
                         mywidget.widget_extradata = myData.table;
                     }            
 
                     /*Get table sorting data*/
-                    var caseSort;
-                    caseSort = (mywidget.widget_data.indexOf("@TCSS=T") != -1);
+                    var caseSort = true;
+                    // caseSort = (mywidget.widget_data.indexOf("@TCSS=T") != -1);
                     // Parse raw table and row data into a better format
                     jdata = self.mongoconnector.parseTableData(self.currentData);
                     // Parse table into row data and table specs
@@ -3557,9 +3841,9 @@ function appxTableDataHandler() {
             mongoCacheDb.collection(self.cacheCollection, { strict: true }, function mongoCacheDb_collectionCallback(err, collection) {
 
                 if (!err && collection) {
-                    collection.remove({ "datalookupid": lookupid }, { "fsync": true }, function collection_removeCallback(err, result) {
+                    collection.deleteMany({ "datalookupid": lookupid }, { "fsync": true }, function collection_removeCallback(err, result) {
                         if (err) {
-                            dlog("removeappxtabledata collection.remove error: " + err);
+                            dlog("removeappxtabledata collection.deleteMany error: " + err);
                         }
                     });
                 } else if (err.message.indexOf("does not exist") === -1) {
@@ -3576,9 +3860,9 @@ function appxTableDataHandler() {
         try {
             mongoCacheDb.collection(coll, { strict: true }, function mongoCacheDb_collectionCallback(err, collection) {
                 if (!err) {
-                    collection.remove({ "datapcbid": pcb }, { "fsync": true },function collection_removeCallback(err, result) {
+                    collection.deleteMany({ "datapcbid": pcb }, { "fsync": true },function collection_removeCallback(err, result) {
                         if (err) {
-                            dlog("releaseappxtabledata collection.remove error: " + err);
+                            dlog("releaseappxtabledata collection.deleteMany error: " + err);
                         }
                     });
                 } else if (err.message.indexOf("does not exist") === -1) {
@@ -3594,38 +3878,38 @@ function appxTableDataHandler() {
     self.insertappxtabledata = function (appxprocessor, lookupid, message, removeData, mywidget) {
         try {
             var collection = mongoCacheDb.collection(appxprocessor.cacheCollection, function(err,collection){
-		    if (message.length > 0) {
-			if (removeData) {
-			    collection.remove({ "datalookupid": lookupid }, function(res) {
-				    mywidget.deleteIsRunning = false;
-				});
-                                }
-			var deferredExec = function(bulk) {
-			    if( mywidget.deleteIsRunning === false ) {
-				bulk.execute({},function() {
-                                    appxprocessor.pendingInserts--;
-				    });
-                                }
-			    else {
-				setTimeout( function() {
-					deferredExec(bulk);
-				    },100);
+                if (message.length > 0) {
+                    if (removeData) {
+                        collection.deleteMany({ "datalookupid": lookupid }, function(res) {
+                            mywidget.deleteIsRunning = false;
+                        });
+                    }
+                    var deferredExec = function(bulk) {
+                        if( mywidget.deleteIsRunning === false ) {
+                            bulk.execute({},function() {
+								appxprocessor.pendingInserts--;
+                            });
                         }
-			};
-                        var bulk = collection.initializeUnorderedBulkOp();
-			var mMax = message.length - 1;
-			for (var i = 0, cnt = 0; i <= mMax; i++) {
-                            bulk.insert(message[i]);
-			    cnt++;
-			    if ( cnt === 1000 || i === mMax ) {
-				appxprocessor.pendingInserts++;
-				deferredExec(bulk);
-				if (i === mMax) { 
-				    appxprocessor.pendingInserts--; 
-                                }
-                                bulk = collection.initializeUnorderedBulkOp();
-				cnt = 0;
+                        else {
+                        setTimeout( function() {
+                            deferredExec(bulk);
+                            },100);
+                        }
+                    };
+                    var bulk = collection.initializeUnorderedBulkOp();
+                    var mMax = message.length - 1;
+                    for (var i = 0, cnt = 0; i <= mMax; i++) {
+                        bulk.insert(message[i]);
+                        cnt++;
+                        if ( cnt === 1000 || i === mMax ) {
+                            appxprocessor.pendingInserts++;
+                            deferredExec(bulk);
+                            if (i === mMax) { 
+                                appxprocessor.pendingInserts--; 
                             }
+                            bulk = collection.initializeUnorderedBulkOp();
+                            cnt = 0;
+                        }
                     }
                 }
             });
@@ -3672,7 +3956,6 @@ function appxTableDataHandler() {
             var sortcols = [];
             var rowdata = data.slice(numcols + 1, data.length);
             var widthcur = 0;
-
             
             // Build list of which columns have extra hidden sort columns
             sortcols.push(null);
@@ -3681,20 +3964,63 @@ function appxTableDataHandler() {
             if (colsarray.length > 0) {
                 for (var i = 0; i < colsarray.length; i++) {
                     var cleanName = colsarray[i][3].replace(/\'/g, "").replace(/\s/g, "_").replace(/\./g, "_").toLowerCase() + i;
+                    var sortType = "A";
                     switch (colsarray[i][4]) {
-                        case "java.lang.Integer": cleanName += "I"; sortcols.push("I"); break;
-                        case "java.lang.Float": cleanName += "F"; sortcols.push("F"); break;
-                        case "java.util.Date": cleanName += "D"; sortcols.push("D"); break;
-                        case "java.lang.Boolean": cleanName += "B"; sortcols.push(null); break;
+                        case "java.lang.Integer": 
+                            cleanName += "I"; 
+                            sortType = "I"; 
+                            break;
+                        case "java.lang.Float": 
+                            cleanName += "F"; 
+                            sortType = "F";  
+                            break;
+                        case "java.util.Date": 
+                            cleanName += "D"; 
+                            sortType = "D";  
+                            break;
+                        case "java.lang.Boolean": 
+                            cleanName += "B"; 
+                            sortType = null;  
+                            break;
                         default:
                             cleanName += "A";
-                            sortcols.push("A");
+                            sortType = "A";
                             break;
                     }
                     colsarray[i]["cleanName"] = cleanName;
+                    /* Now check if sortType has been overridden by widget*/
+                    if( colsarray[i].length > 6 ){
+                        var strIdx = colsarray[i][6].indexOf("@TCST=");
+                        if(strIdx >= 0 && colsarray[i][6].length >= strIdx + 6 ){
+                            //add the length of the text to the strIdx so we can extract the value
+                            strIdx += 6;
+                            var macroValue = colsarray[i][6].substr(strIdx, strIdx+10).split("@",1)[0].trim();
+                            switch (macroValue) {
+                                case "INT": 
+                                    sortType = "I"; 
+                                    break;
+                                case "FLOAT": 
+                                    sortType = "F";  
+                                    break;
+                                case "DATE": 
+                                    /* if the original format is in alpha, change this to alpha and let the 
+                                    ** client to handle the conversion to date base on "datefmt" argument */
+                                    if(sortType == "A")
+                                        sortType = "A";
+                                    else
+                                        sortType = "D";  
+                                    break;
+                                case "TEXT": 
+                                    sortType = "A";  
+                                    break;
+                                default:
+                                    break;
+                            }
+                        } 
+                    }
+                    sortcols.push(sortType);
                 }
             }
-            
             /////////////////////////////////////////////////////
             // Create the column models and names for the grid //
             /////////////////////////////////////////////////////
@@ -3703,6 +4029,8 @@ function appxTableDataHandler() {
             var colmodel = [];
             var colopts = [];
             var collist = { "id2": 1, "selected": 1 };
+            var colWidget = {};
+            var defaultRowWidget = {};
             
             //Create hidden initial sort column
             colmodel.push({
@@ -3768,10 +4096,30 @@ function appxTableDataHandler() {
                     "search": true,
                     "title": false,
                     "datatype": "html",
-		    "hidden": false,
-		    "hidedlg": false
-
+                    "hidden": false,
+                    "hidedlg": false
                 };
+
+                /* This is where we save the widget information for each column*/
+                /* check if we have widget info for this column, if we do add it to colWidget
+                 * The 6th oject in the array is widget data
+                */ 
+
+                if( colsarray[i].length > 6){
+                    var colWidgetObj = {};
+                    colWidgetObj["widget_data"] = colsarray[i][6];
+                    colWidgetObj["oLabel"] = colsarray[i][3];
+                    colWidget[cleanName] = colWidgetObj;
+                }
+
+                /* This is where we save the default widget information for each row*/
+                /* check if we have default row widget info for this column, if we do add it to defaultEowWidget
+                 * The 7th oject in the array is the default row widget data
+                */ 
+
+               if( colsarray[i].length > 7 && colsarray[i][7].length > 0){
+                    defaultRowWidget[cleanName] = {'widget_data':colsarray[i][7]};
+                }
                 
                 // Let's go ahead and push this into the column model list but
                 // we can still override it's values as needed.
@@ -3821,6 +4169,8 @@ function appxTableDataHandler() {
             mTableColumnData.widthcur = widthcur;
             mTableColumnData.currentRow = 0;
             mTableColumnData.collist = JSON.stringify(collist);
+            mTableColumnData.colWidget = colWidget;
+            mTableColumnData.defaultRowWidget = defaultRowWidget;
             callback(mTableColumnData);
 
         } catch (ex) {
@@ -3841,7 +4191,10 @@ function appxTableDataHandler() {
             var selectedKeys = [];
             var sortcols = columnData.sortColumns;
             var colsarray = columnData.colArray;
-
+            var overrideRowWidget = {};
+            var rowWidgetSupported = false;
+            var rowWidgetObj = {};
+            var jsonRowWidget;
             //If no rows are returned, push empty row with modified datalookupid
             if (mydata.length == 0) {
                 var myrow = {};
@@ -3854,14 +4207,50 @@ function appxTableDataHandler() {
                 jsonRows.push(myrow);
             }
 
+            /*check if the engine sends row widget info, if it does, the 3rd field is 
+            * an array of widget data for columns, if not, the 3rd field is the first column on the
+            * table*/
+           /*we add 2 to column count because primarykey and selected is not part of the colCount*/
+            if(mydata.length > 0 && mydata[0].length > (colsarray.length + 2)){
+                rowWidgetSupported = true;
+            }
             for (var i = 0; i < mydata.length; i++) {
                 newrow = [];
+                /*add data for default sortorder column*/
                 mydata[i].unshift(++columnData.currentRow);
                 for (var k = 0; k < mydata[i].length; k++) {
+                    /*if rowWidget is supported, extract it, this shouldn't be part of the data 
+                    * since we added sortorder, the rowwidget is now the 4th pirce of data */
+                    if( k == 3 && rowWidgetSupported == true ){
+                        
+                        //ignore the data that comes in as '[]'
+                        if(mydata[i][k].length > 2){
+                            /*convert all '\"' to '"' before parsing the string to json*/
+                            jsonRowWidget = JSON.parse("{\"rowWidget\":"+mydata[i][k].replace(/\\\"/g, '\"')+"}");
+                            rowWidgetObj = {};
+                            for(let jj = 0; jj < jsonRowWidget.rowWidget.length; jj++){
+                                if(jsonRowWidget.rowWidget[jj] != ""){
+                                    /* add 3 to column index because we want to skip initialsort, selected, and id2 columns*/ 
+                                    rowWidgetObj[colsarray[jj]["cleanName"]] = {'widget_data':jsonRowWidget.rowWidget[jj]};
+                                }
+                            }
+                            /* Add the override row widget to the object. The property name for each row is 
+                            ** the primary key (2nd variable in the array)
+                            ** Add "i" as a prefix to id, so id match the html 4 and html 5 standards
+                            */
+                            overrideRowWidget[ "i" + mydata[i][1]] = rowWidgetObj;
+                        }  
+                        continue;
+                    }
                     var d = [];
                     if (k == 0) {
                         d[0] = mydata[i][k];
-                    } else {
+                    }
+                    else if (k == 1){
+                        /*html id must have at lease 1 alpha character in it. Add a leading 'i' to ensure that*/
+                        d[0] = "i" + mydata[i][k];
+                    } 
+                    else {
                         d = mydata[i][k].split("||");
                     }
 
@@ -3869,7 +4258,7 @@ function appxTableDataHandler() {
                     if (d[0].length > 5 && d[0].substr(0, 5).toLowerCase() == "<html") {
                         newrow.push(d[0]);
                     } else {
-                        if ((k > 2) && (colsarray[k - 3][4] == "java.lang.Boolean") && (d[0] == " ")) {
+                        if ((k > 3) && (colsarray[k - 4][4] == "java.lang.Boolean") && (d[0] == " ")) {
                             newrow.push("n");
                         } else if (k != 0) {
                             newrow.push(d[0].replace(/\</g, "&lt;").replace(/\>/g, "&gt;"));
@@ -3877,28 +4266,71 @@ function appxTableDataHandler() {
                             newrow.push(d[0]);
                         }
                     }
+                    /* If we support rowWidget, then from position 3 and on the sort columns are off by 1 position
+                       We don't want to change sortcols because the rowwidget is not part of the data, so create
+                       a new index for sortcol */
+                    let sortcolsIndex = k;
+                    if(k>3 && rowWidgetSupported == true ){
+                        sortcolsIndex--;
+                    }
 
-                    if (sortcols[k]) {
-                        switch (sortcols[k]) {
+                    if (sortcols[sortcolsIndex]) {
+                        switch (sortcols[sortcolsIndex]) {
                             case "I":
                             case "D":
-                                if (d.length > 1)
-                                    newrow.push(parseInt(d[1]));
-                                else
-                                    newrow.push(0);
+                                if (d.length > 1){
+                                    var parsed = parseInt(d[1]);
+                                    if (isNaN(parsed)) {
+                                        newrow.push(d[1]);
+                                    }
+                                    else{
+                                        newrow.push(parsed);
+                                    }
+                                }   
+                                else{
+                                    if (d[0].length > 0){
+                                        var parsed = parseInt(d[0]);
+                                        if (isNaN(parsed)) {
+                                            newrow.push(0);
+                                        }
+                                        else{
+                                            newrow.push(parsed);
+                                        }
+                                    }
+                                    else
+                                        newrow.push(0);
+                                }
                                 break;
                             case "F":
-                                if (d.length > 1)
-                                    newrow.push(parseFloat(d[1]));
-                                else
-                                    newrow.push(0.0);
+                                if (d.length > 1){
+                                    var parsed = parseFloat(d[1]);
+                                    if (isNaN(parsed)) {
+                                        newrow.push(d[1]);
+                                    }
+                                    else{
+                                        newrow.push(parsed);
+                                    }
+                                }
+                                else{
+                                    if (d[0].length > 0){
+                                        var parsed = parseFloat(d[0]);
+                                        if (isNaN(parsed)) {
+                                            newrow.push(0.0);
+                                        }
+                                        else{
+                                            newrow.push(parsed);
+                                        }
+                                    }
+                                    else
+                                        newrow.push(0.0);
+                                }
                                 break;
                             case "A":
                                 if (d[0].length > 5 && d[0].substr(0, 5).toLowerCase() == "<html") {
                                     if (caseSort) {
-                                        newrow.push(StringLib(d[0]).stripTags().toString());
+                                        newrow.push(StripHtml(d[0]).toString());
                                     } else {
-                                        newrow.push(StringLib(d[0]).stripTags().toString().toLowerCase());
+                                        newrow.push(StripHtml(d[0]).toString().toLowerCase());
                                     }
                                 }
                                 else {
@@ -3944,6 +4376,9 @@ function appxTableDataHandler() {
             mRtn.table.selectedKeys = selectedKeys;
             mRtn.table.collist = columnData.collist;
             mRtn.table.curRow = columnData.currentRow;
+            mRtn.table.colWidget = columnData.colWidget;
+            mRtn.table.defaultRowWidget = columnData.defaultRowWidget;
+            mRtn.table.rowWidget = overrideRowWidget;
             return mRtn;
         }
         catch (e) {

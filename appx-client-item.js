@@ -1,12 +1,12 @@
 /*********************************************************************
  **
- **   server/appx-client-items.js - Client Item processing
+ **   server/appx-client-item.js - Client Item processing
  **
  **   This module contains code to process Appx Item screen elements.
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-item.js,v 1.172 2018/12/05 14:05:04 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-item.js,v 1.175 2019/07/30 00:55:32 jselvage Exp $";
 
 "use strict";
 //find the smallest container for an item
@@ -74,8 +74,9 @@ function appxitemshandler(x) {
             if (item) {
                 var lastItem = item;
             }
-            var item = x.data.shift(),
-                $itemhtml = $("<div>");
+            var item = x.data.shift();
+            
+            var $itemhtml = $("<div>");
             //console.log("item row=%d, col=%d special=%d wt=%d label=%s",item.pos_row,item.pos_col,item.special,(item.widget == null ? -1 : item.widget.wWidgetType),item.data);
             item.uline = appxIsUline(item);
             appxSetModifiableCapable(item, false);
@@ -106,9 +107,13 @@ function appxitemshandler(x) {
                     break;
             }
 
-
             item.widget = new Widget(0, "", item.widget);
             wt = item.widget.wWidgetType;
+
+			// Check and if required santize the incomming text of html (Note:  Should add widget type instead of null)
+			if (wt != WIDGET_TYPE_HTML_VIEWER && wt != WIDGET_TYPE_HTML_EDITOR && appxIsModifiable(item) == false) {
+				item.data = sanitizeText( item.data, null );
+			}
 
             if (item.type == ELEM_LOG && wt == null) {
                 wt = WIDGET_TYPE_CHECK_BOX;
@@ -159,6 +164,8 @@ function appxitemshandler(x) {
                 else if (wt == WIDGET_TYPE_FILE_CHOOSER || wt == WIDGET_TYPE_DATE_CHOOSER || wt == WIDGET_TYPE_LISTBOX) {
                     item.widget.wLabel = null;
                     item.widget.wWidgetType = WIDGET_TYPE_RAW_TEXT;
+                    //save the original type somewhere for further processing
+                    item.widget.wWidgetOriginalType = wt;
                     wt = WIDGET_TYPE_RAW_TEXT;
                 }
             }
@@ -265,6 +272,11 @@ function appxitemshandler(x) {
 
                     if (wt != WIDGET_TYPE_LABEL) {
                         $itemhtml.addClass("appx-raw-text");
+                    }
+
+                    //if the original type was listbox and changed to raw-text add class listbox
+                    if(item.widget != null && item.widget.wWidgetOriginalType == WIDGET_TYPE_LISTBOX){
+                        $itemhtml.addClass("appx-listbox-originally");
                     }
 
                     if (item.pos_row <= appx_session.screenrows - 3) {

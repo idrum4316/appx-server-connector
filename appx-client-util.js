@@ -534,8 +534,8 @@ function getCursorPosition($tag) {
 function clearAndReset() {
     /*Clear pending counts*/
     appx_session.pendingTables = 0;
-    appx_session.pendingResources = {};
-    appx_session.pendingResources.length = 0;
+//    appx_session.pendingResources = {};
+//    appx_session.pendingResources.length = 0;
 
     for (name in CKEDITOR.instances) {
         $(".ui-tooltip").remove();
@@ -715,7 +715,8 @@ function appxUtil_downloadUrl( url ) {
     
 	var link = document.createElement('a');
 	link.href = url;
-	link.download = fileName;
+    link.download = fileName;
+    link.target = "_blank";
 	document.body.appendChild(link);	    
 	link.click();
 	document.body.removeChild(link);

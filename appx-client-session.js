@@ -1,4 +1,4 @@
-﻿
+
 /*********************************************************************
  **
  **   server/appx-client-session.js - Client Session processing
@@ -7,7 +7,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-session.js,v 1.81 2018/08/15 19:30:14 jnelson Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-session.js,v 1.86 2019/12/18 14:52:22 m.karimi Exp $";
 
 "use strict";
 //this function can be bound to a login's screen's button click event to handle logging into the appx server
@@ -227,7 +227,7 @@ function sendappxinit() {
 }
 
 //Sends feature data to the server
-function sendappxfeatures() {
+function sendappxfeatures(data) {
     //		FEATURE_RUNNING_GUI_CLIENT      = 0x00000001;
     //		FEATURE_PASS_PROC_ID_ON_INIT    = 0x00000002;
     //		FEATURE_LOAD_KEYMAP_FROM_SERVER = 0x00000004;
@@ -271,6 +271,8 @@ function sendappxfeatures() {
     //    var mask3 = 0xfb;
 
     //    appx_session.feature_mask = [parseInt(mask0), parseInt(mask1), parseInt(mask2), parseInt(mask3)];
+
+    appx_session.server_feature_mask = data.data;
     var ms = {
         cmd: 'appxmessage',
         args: appx_session.feature_mask, //minimum
@@ -281,7 +283,8 @@ function sendappxfeatures() {
 }
 
 //Sends feature data to the server
-function sendappxextendedfeatures() {
+function sendappxextendedfeatures(data) {
+    appx_session.server_extended_feature_mask = data.data;
     var ms = {
         cmd: 'appxmessage',
         args: appx_session.extended_feature_mask, //minimum
@@ -392,6 +395,9 @@ function appxloginhandler(rtndata) {
         if (appxUseSoftkeys) $("#softkeys_showhide").show();
         $("#defaulttools_showhide").show();
         $("#appx-status-msg").text("Logged In Sucessfully...\n\n");
+        if( loginresponse.ca  && appx_session.localConnectorRunning === true){
+            localConnectorUpdateCertificate(loginresponse.ca);
+        }
     }
     else {
         loggedin = false;
@@ -413,8 +419,10 @@ function appxfinishhandler(rtndata) {
         localStorage["appx_prev_pids"] = JSON.stringify(prev_pids);
     }
     appx_session.connected = false;
-    if (appxCloseOnExit == "true")
+    if (appxCloseOnExit == "true"){
         close();
+        history.back();
+    }
     else if (appxCloseOnExit == "back")
         history.back();
     else if ($("meta[name=appx-browser-redirect]").attr("content") !== "Enter Redirect Website Here" &&
@@ -454,13 +462,13 @@ function appxinithandler(rtndata) {
 }
 
 //Features Message Handler
-function appxfeatureshandler() {
-    sendappxfeatures();
+function appxfeatureshandler(data) {
+    sendappxfeatures(data);
 }
 
 //Features Message Handler
-function appxextendedfeatureshandler() {
-    sendappxextendedfeatures();
+function appxextendedfeatureshandler(data) {
+    sendappxextendedfeatures(data);
 }
 
 
@@ -523,7 +531,7 @@ function appxpidhandler(x) {
     appx_session.setProp("lastHost", appx_session.server);
     appx_session.setProp("lastPort", appx_session.port);
     if (appx_session.localConnectorRunning === true) {
-        initialize_localos_directories(appx_session.getProp("cachePath") + "/");
+        initialize_localos_directories(appx_session.getProp("cachePath") + appx_session.fileseparatorchar);
     }
     $("title").html(appx_session.getProp("windowTitle"));
     var host_pid = {

@@ -30,7 +30,7 @@ var mongoStatus = "Running";
 *************************************************************/
 
 var atob = require('atob');
-var StringLib = require('string');
+var StripHtml = require("string-strip-html");
 var GridFSBucket = require('mongodb').GridFSBucket;
 var MongoClient = require('mongodb').MongoClient;
 var MongoServer = require('mongodb').Server;
@@ -52,7 +52,7 @@ var iconv = require('iconv-lite');
 
 console.log("appxConnector Client process started, pid: " + process.pid);
 
-// Global variabls and Objects
+// Global variables and Objects
 var arrayPush = Array.prototype.push;
 var mongoCacheDb = null;
 var logfile = null;
@@ -134,8 +134,11 @@ function setConfigOptions(config) {
 
 function connectToMongo() {
     const mongoUrl = 'mongodb://' + myconfig.mongoHost + ':' + myconfig.mongoPort + '/' + myconfig.mongoDatabase + '?socketTimeoutMS=30000';
+	const mongoOptions = {
+		useUnifiedTopology: true
+	};
 
-    MongoClient.connect(mongoUrl, function mongoClient_connectCallback(err, client) {
+    MongoClient.connect(mongoUrl, mongoOptions, function mongoClient_connectCallback(err, client) {
         mongoCacheDb = client.db("AppxDatabaseCache");
 
         if (err) {
@@ -3917,9 +3920,9 @@ function appxTableDataHandler() {
                             case "A":
                                 if (d[0].length > 5 && d[0].substr(0, 5).toLowerCase() == "<html") {
                                     if (caseSort) {
-                                        newrow.push(StringLib(d[0]).stripTags().toString());
+                                        newrow.push(StripHtml(d[0]).toString());
                                     } else {
-                                        newrow.push(StringLib(d[0]).stripTags().toString().toLowerCase());
+                                        newrow.push(StripHtml(d[0]).toString().toLowerCase());
                                     }
                                 } else {
                                     if (caseSort) {

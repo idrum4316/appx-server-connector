@@ -47,12 +47,28 @@ var AppxTable = /** @class */ (function () {
         this._pulledFromSrv = false;
         this._tableHashKey = tableHashKey;
         this._init();
-        this._prefsSrvSnap = JSON.stringify(this._prefsData);
+        if (this._prefsData && this._prefsData.colModel) {
+            var modifiedPrefsSrvSnap = this._prefsData;
+            var modifiedPrefsSrvSnapcolModel = AppxTable._prefsSrvSnapColModelCleanup(this, this._prefsData.colModel);
+            if (modifiedPrefsSrvSnapcolModel.length > 0) {
+                modifiedPrefsSrvSnap.colModel = modifiedPrefsSrvSnapcolModel;
+            }
+            else {
+                modifiedPrefsSrvSnap.colModel = undefined;
+                /*if colModel is undefined, make colMap undefined as well*/
+                modifiedPrefsSrvSnap.colMap = undefined;
+            }
+            this._prefsSrvSnap = JSON.stringify(modifiedPrefsSrvSnap);
+        }
+        else {
+            this._prefsSrvSnap = JSON.stringify(this._prefsData);
+        }
     }
     AppxTable.prototype._init = function () {
         this._prefsData = new AppxTablePrefs();
         this._transData = new AppxTableTransient();
         this._transData.pendingXHR = 0;
+        this._prefsDataReceived = false;
     };
     // ============================================================
     // Protected Static Methods
@@ -119,7 +135,7 @@ var AppxTable = /** @class */ (function () {
         if (appxTable._widgetData.tableShowPageOption === undefined || appxTable._widgetData.tableShowPageOption === true) {
             return true;
         }
-        if (appxTable._widgetData.tableShowTableRefresh === undefined || appxTable._widgetData.tableShowTableRefresh === true) {
+        if (appxTable._widgetData.tableShowTableReset === undefined || appxTable._widgetData.tableShowTableReset === true) {
             return true;
         }
         if (appxTable._widgetData.tableShowColChooser === undefined || appxTable._widgetData.tableShowColChooser === true) {
@@ -150,7 +166,7 @@ var AppxTable = /** @class */ (function () {
                 appxTable._scrollSwitch();
             }).append($("<span class='table-buttons-span ui-icon ui-icon-newwin'>")).appendTo($btnDiv);
         }
-        if (appxTable._widgetData.tableShowTableRefresh === undefined || appxTable._widgetData.tableShowTableRefresh === true) {
+        if (appxTable._widgetData.tableShowTableReset === undefined || appxTable._widgetData.tableShowTableReset === true) {
             dWidth += btnWidth;
             $("<button id='table-reset' class='table-buttons' title='" + appx_session.language.tooltips.tableReset + "'>").click(function $_click() {
                 appxTable._resetToDefaults();
@@ -159,7 +175,12 @@ var AppxTable = /** @class */ (function () {
         if (appxTable._widgetData.tableShowColChooser === undefined || appxTable._widgetData.tableShowColChooser === true) {
             dWidth += btnWidth;
             $("<button id='table-column-chooser' class='table-buttons' title='" + appx_session.language.tooltips.tableColumns + "'>").click(function $_click() {
-                $("#" + appxTable._gridElemId).jqGrid('columnChooser');
+                $("#" + appxTable._gridElemId).jqGrid('columnChooser', { close: function $_dialog_close() {
+                        return (false);
+                    },
+                    closeOnEscape: true,
+                    modal: true
+                });
             }).append($("<span class='table-buttons-span ui-icon ui-icon-grid'>")).appendTo($btnDiv);
         }
         if (appxTable._widgetData.tableShowLayoutSave === undefined || appxTable._widgetData.tableShowLayoutSave === true) {
@@ -170,6 +191,8 @@ var AppxTable = /** @class */ (function () {
             }).append($("<span class='table-buttons-span ui-icon ui-icon-disk'>")).appendTo($btnDiv);
         }
         $btnDiv.dialog({
+            modal: true,
+            closeOnEscape: true,
             open: function $_dialog_open(event, ui) {
                 var $msg = $("<div id='table-buttons-message-div'>").append("<span id='table-buttons-message-span'>");
                 $(".ui-dialog-buttonpane").append($msg);
@@ -182,11 +205,18 @@ var AppxTable = /** @class */ (function () {
                     "z-index": 19999,
                     "width": "98%"
                 });
+                $(this).parent().siblings(".ui-widget-overlay").css({
+                    "z-index": 19998,
+                });
                 $(".ui-dialog :button").blur();
+                $(this).parent().siblings(".ui-widget-overlay").click(function () {
+                    $("#jqgrid-options-dialog").dialog("close");
+                });
             },
             close: function $_dialog_close() {
                 $(this).dialog("destroy").remove();
                 $("#" + appxTable._optionElemId).blur();
+                return (false);
             },
             buttons: {
                 Finished: function () {
@@ -340,8 +370,13 @@ var AppxTable = /** @class */ (function () {
         var elem = $("#" + appxTable._appxElemId);
         var grid = $("#" + appxTable._gridElemId);
         var pager = $("#" + appxTable._pagerElemId);
-        // @ts-ignore - $.jgrid does exist
-        $.jgrid.gridUnload("#" + appxTable._gridElemId);
+        try {
+            // @ts-ignore - $.jgrid does exist
+            $.jgrid.gridUnload("#" + appxTable._gridElemId);
+        }
+        catch (ex) {
+            console.log("_reloadGrid() failed to unload old grid: " + ex);
+        }
         pager.remove();
         grid.remove();
         appxTable._createGridMongo(elem);
@@ -372,12 +407,18 @@ var AppxTable = /** @class */ (function () {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 // CSV extract is done, now let's download the results to the desktop
                 var newPrefs = JSON.parse(xhr.responseText).prefData;
-                appxTable._prefsSrvSnap = newPrefs;
+                if (newPrefs != null) {
+                    appxTable._prefsSrvSnap = newPrefs;
+                }
+                else {
+                    appxTable._prefsSrvSnap = "{}";
+                }
                 appxTable._adjustGridIconColors();
-                if (newPrefs !== "{}") {
+                if (newPrefs !== "{}" && newPrefs != null) {
                     appxTable._prefsData = JSON.parse(newPrefs);
                 }
             }
+            appxTable._prefsDataReceived = true;
         };
         var postData = {
             prefType: appxSession.user + "_" + appxSession.host + "_tablePrefs",
@@ -411,7 +452,23 @@ var AppxTable = /** @class */ (function () {
             if (xhr.readyState === 4 && xhr.status === 200) {
             }
         };
-        appxTable._prefsSrvSnap = JSON.stringify(appxTable._prefsData);
+        //cleanup colModel if exists
+        if (appxTable._prefsData && appxTable._prefsData.colModel) {
+            var modifiedPrefsSrvSnap = appxTable._prefsData;
+            var modifiedPrefsSrvSnapcolModel = AppxTable._prefsSrvSnapColModelCleanup(appxTable, appxTable._prefsData.colModel);
+            if (modifiedPrefsSrvSnapcolModel.length > 0) {
+                modifiedPrefsSrvSnap.colModel = modifiedPrefsSrvSnapcolModel;
+            }
+            else {
+                modifiedPrefsSrvSnap.colModel = undefined;
+                /*if colModel is undefined, make colMap undefined as well*/
+                modifiedPrefsSrvSnap.colMap = undefined;
+            }
+            appxTable._prefsSrvSnap = JSON.stringify(modifiedPrefsSrvSnap);
+        }
+        else {
+            appxTable._prefsSrvSnap = JSON.stringify(appxTable._prefsData);
+        }
         appxTable._adjustGridIconColors();
         var postData = {
             prefType: appxSession.user + "_" + appxSession.host + "_tablePrefs",
@@ -420,6 +477,146 @@ var AppxTable = /** @class */ (function () {
         };
         // Send the request to get everything rolling along
         xhr.send(JSON.stringify(postData));
+    };
+    /**
+    * only stores the initial data into prefsSrvSnap.colModel object
+    * We don't want to store the propertirs that got changed by widget object dynamically into user prefs
+    */
+    AppxTable._prefsSrvSnapColModelCleanup = function (appxTable, colModel) {
+        var newColModel = [];
+        if (colModel) {
+            //only save a certain properties
+            for (var i = 0; i < colModel.length; i++) {
+                var col = { name: colModel[i].name };
+                //col.name = colModel[i].name;
+                if (colModel[i].index)
+                    col.index = colModel[i].index;
+                if (appxTable._tableData.colWidget && appxTable._tableData.colWidget[colModel[i].name])
+                    col.label = appxTable._tableData.colWidget[colModel[i].name].oLabel;
+                else
+                    col.label = colModel[i].label;
+                if (colModel[i].widthOrg != undefined) {
+                    col.width = colModel[i].widthOrg;
+                    col.widthOrg = colModel[i].widthOrg;
+                }
+                if (colModel[i].oHidden != undefined) {
+                    //hidden property changed but not by widget, save the current one
+                    if (colModel[i].oHidden != colModel[i].hidden && colModel[i].WidetChangedHidden == false)
+                        col.hidden = colModel[i].hidden;
+                    //widget changed the hidden property, save the original one
+                    else if (colModel[i].oHidden != colModel[i].hidden && colModel[i].WidetChangedHidden == true)
+                        col.hidden = colModel[i].oHidden;
+                    else
+                        col.hidden = colModel[i].hidden;
+                }
+                else {
+                    col.hidden = colModel[i].hidden;
+                }
+                if (colModel[i].hidedlg != undefined)
+                    col.hidedlg = colModel[i].hidedlg;
+                if (colModel[i].align)
+                    col.align = colModel[i].align;
+                if (colModel[i].fixed != undefined)
+                    col.fixed = colModel[i].fixed;
+                if (colModel[i].datatype)
+                    col.datatype = colModel[i].datatype;
+                if (colModel[i].searchtype)
+                    col.searchtype = colModel[i].searchtype;
+                if (colModel[i].formatoption)
+                    col.formatoption = colModel[i].formatoption;
+                if (colModel[i].editoption)
+                    col.editoption = colModel[i].editoption;
+                if (colModel[i].formatter)
+                    col.formatter = colModel[i].formatter;
+                //add the new col data to new ColModel object
+                newColModel.push(col);
+            } //end for
+            /*compare the enw colModel with the original. If they are the same, don't bother getting a snapshot*/
+            if (newColModel.length > 0 && appxTable._tableData.colModel) {
+                var diff = false;
+                for (var i = 0; i < appxTable._tableData.colModel.length; i++) {
+                    if (newColModel[i].name != appxTable._tableData.colModel[i].name) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].index != appxTable._tableData.colModel[i].index) {
+                        diff = true;
+                        break;
+                    }
+                    /*if we have widget, compare the label with original (not modified by widget) label*/
+                    if (appxTable._tableData.colWidget && appxTable._tableData.colWidget[colModel[i].name]) {
+                        if (newColModel[i].label != appxTable._tableData.colWidget[colModel[i].name].oLabel) {
+                            diff = true;
+                            break;
+                        }
+                    }
+                    else {
+                        if (newColModel[i].label != appxTable._tableData.colModel[i].label) {
+                            diff = true;
+                            break;
+                        }
+                    }
+                    /*
+                    * width can change but we don't want to save the preference only because the col width has changed
+                    if(newColModel[i].width != appxTable._tableData.colModel[i].width){
+                        diff = true;
+                        break;
+                    }   */
+                    /*widget can hide column, user also can hide column. We need to eliminate the posibility of
+                    * widget hiding the column. To do that we have oHidden property that saves the hidden property before
+                    * widget has a chance to modify the hidden property of the column.  */
+                    if (appxTable._tableData.colModel[i].oHidden != undefined) {
+                        if (newColModel[i].hidden != appxTable._tableData.colModel[i].oHidden) {
+                            diff = true;
+                            break;
+                        }
+                    }
+                    else {
+                        if (newColModel[i].hidden != appxTable._tableData.colModel[i].hidden) {
+                            diff = true;
+                            break;
+                        }
+                    }
+                    if (newColModel[i].hidedlg != appxTable._tableData.colModel[i].hidedlg) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].align != appxTable._tableData.colModel[i].align) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].fixed != appxTable._tableData.colModel[i].fixed) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].datatype != appxTable._tableData.colModel[i].datatype) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].searchtype != appxTable._tableData.colModel[i].searchtype) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].formatoption != appxTable._tableData.colModel[i].formatoption) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].editoption != appxTable._tableData.colModel[i].editoption) {
+                        diff = true;
+                        break;
+                    }
+                    if (newColModel[i].formatter != appxTable._tableData.colModel[i].formatter) {
+                        diff = true;
+                        break;
+                    }
+                } //end for
+                //colModel is the same as original
+                if (diff == false) {
+                    newColModel = [];
+                }
+            } //end if
+        }
+        return newColModel;
     };
     /**
     * Create a CSV export of the specified table and download it to the desktop.  This
@@ -453,6 +650,41 @@ var AppxTable = /** @class */ (function () {
         // Send the request to get everything rolling along
         xhr.send(JSON.stringify(postData));
     };
+    /**
+    * Fetch a range of keys from Mongo.  The jqGrid does not keep all the rows in memory
+    * when you scroll a long way down the grid.  So to get all the keys in a range we have
+    * to go the the server and read the rows to get all of the keys.
+    *
+    * @param table: The table object to export
+    */
+    AppxTable.prototype._tableGetRangeKeys = function (keyBeg, keyEnd, callback) {
+        var appxTable = this;
+        var table = $("#" + appxTable._gridElemId);
+        var postData = table.getGridParam("postData");
+        // Make sure out colModel is current in postData
+        postData.colModel = table.getGridParam("colModel");
+        // If we have filters we have to tell the server to use them
+        if (postData.filters !== undefined && postData.filters.length > 0) {
+            postData["_search"] = "true";
+        }
+        // Add the key values to the post data objedct
+        postData.keyBeg = keyBeg;
+        postData.keyEnd = keyEnd;
+        // Setup the request to create an extract of keys for this range from the server
+        var url = table.getGridParam("url").replace(/getGridData$/, "getRangeKeys");
+        var xhr = new XMLHttpRequest;
+        xhr.open("POST", url);
+        xhr.setRequestHeader('Content-type', 'application/json');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                // Keys extract is done, now let's process the results
+                var resp = JSON.parse(xhr.responseText);
+                callback(resp);
+            }
+        };
+        // Send the request to get everything rolling along
+        xhr.send(JSON.stringify(postData));
+    };
     AppxTable.prototype._clearSelections = function () {
         var appxTable = this;
         appxTable.selectedKeys = undefined;
@@ -475,7 +707,8 @@ var AppxTable = /** @class */ (function () {
                 "collist": appxTable._tableData.collist,
                 "lastSortName": appxTable._prefsData.lastSortName || [],
                 "lastSortOrder": appxTable._prefsData.lastSortOrder || [],
-                "search": false
+                "search": false,
+                "caseSort": appxTable._widgetData.tableCaseSort
             };
             if (appxTable._prefsData.filters) {
                 postData.filters = appxTable._prefsData.filters;
@@ -614,9 +847,10 @@ var AppxTable = /** @class */ (function () {
         var elemWidthPx = $(elem).width();
         var elemHeightPx = $(elem).height();
         var footerHeightPx = appxTable._widgetData.tableShowFooterBar === true ? 28 : 0; // 26
-        var headingsHeightPx = 20; // 27
+        var captionHeightPx = (appxTable._widgetData.wLabel && appxTable._widgetData.wLabel.trim().length > 0) ? rowHeightPx + 3 : 0;
+        var headingsHeightPx = appxTable._widgetData.tableShowHeading === true ? 20 : 0; // 27
         var viewWidthPx = elemWidthPx - 2;
-        var viewHeightPx = elemHeightPx - 4 - footerHeightPx + headingsHeightPx;
+        var viewHeightPx = elemHeightPx - 4 - footerHeightPx + headingsHeightPx + captionHeightPx;
         var rowNumWidthChr = Math.floor(Math.log(appxTable._tableData.rowCount) * Math.LOG10E + 1);
         var rowNumWidthPx = appxTable._widgetData.tableShowRowNumbers == true ? 30 + ((Math.max(4, rowNumWidthChr) - 4) * 10) : 0;
         //      let dataWidthPx:        number = appxTable._tableData.widthcur + rowNumWidthPx; 
@@ -631,8 +865,32 @@ var AppxTable = /** @class */ (function () {
         /*If table has float column set width to resize to remaining table space*/
         var colModel = appxTable.colModel;
         var fixedIdx = -1;
-        var curWidth = rowNumWidthPx + AppxTable._colAddedWidthPx;
+        var curWidth = rowNumWidthPx > 0 ? rowNumWidthPx + AppxTable._colAddedWidthPx : 0;
+        var colWidget = appxTable._tableData.colWidget;
+        var defaultRowWidget = appxTable._tableData.defaultRowWidget;
         for (var i = 0; i < colModel.length; i++) {
+            /**
+             * Check if we have any widget information for this column.
+             */
+            if (colWidget && colWidget[colModel[i].name] && colWidget[colModel[i].name]["widget_data"]) {
+                colModel[i] = AppxTable.setupColModelColumn(colModel[i], colWidget, appxTable._widgetData);
+            }
+            else {
+                /* use table widget as the value of column deosnt have value for this */
+                if (appxTable._widgetData.tableColumnResizable == false) {
+                    colModel[i].resizable = false;
+                }
+                else {
+                    colModel[i].resizable = true;
+                }
+                /* use table widget as the value of column deosnt have value for this */
+                if (appxTable._widgetData.tableColumnSortable == false) {
+                    colModel[i].sortable = false;
+                }
+                else {
+                    colModel[i].sortable = true;
+                }
+            }
             if (colModel[i].hidden !== true) {
                 if (colModel[i].fixed === true) {
                     curWidth += colModel[i].width + AppxTable._colAddedWidthPx;
@@ -641,17 +899,79 @@ var AppxTable = /** @class */ (function () {
                     fixedIdx = i;
                 }
             }
+            /**
+             * Check if we have any default row widget information for this column.
+             */
+            if (defaultRowWidget && defaultRowWidget[colModel[i].name] && defaultRowWidget[colModel[i].name]["widget_data"]) {
+                //create widget object info from widget_data
+                defaultRowWidget[colModel[i].name]["widget"] = appxTableRowWidgetHandler(defaultRowWidget[colModel[i].name]["widget_data"]);
+                defaultRowWidget[colModel[i].name]["cellAttribute"] = appxTableCreateCellAttribute(defaultRowWidget[colModel[i].name]["widget"]);
+                //we don't need this anymore, so clear some memory
+                defaultRowWidget[colModel[i].name]["widget_data"] = null;
+            }
+            /*add cellattribute to each column*/
+            /*This function add attributes to the cell during the creation of the data - i.e dynamically.
+              By example all valid attributes for the table cell can be used or a style attribute with different properties.
+              The function should return string. Parameters passed to this function are:
+                    rowId     - the id of the row
+                    val       - the value which will be added in the cell
+                    rawObject - the raw object of the data row - i.e if datatype is json - array, if datatype is xml xml node.
+                    cm        - all the properties of this column listed in the colModel
+                    rdata     - the data row which will be inserted in the row. This parameter is array of type name:value, where name is the name in colModel
+            */
+            colModel[i].cellattr = function (rowId, val, rawObject, cm, rdata) {
+                var widget = null;
+                var rowWidget = appxTable._tableData.rowWidget;
+                //if we have rowWidget use it otherwise user defaultRowWidget
+                if (rowWidget && rowWidget[rowId] && rowWidget[rowId][cm.name] && rowWidget[rowId][cm.name]["widget_data"]) {
+                    //convert widget_data to widget object
+                    rowWidget[rowId][cm.name]["widget"] = appxTableRowWidgetHandler(rowWidget[rowId][cm.name]["widget_data"]);
+                    //we don't need this anymore, so clear some memory
+                    rowWidget[rowId][cm.name]["widget_data"] = null;
+                    //use this to create cellAttr for this cell
+                    widget = rowWidget[rowId][cm.name]["widget"];
+                    var selected = false;
+                    if (appxTable.selectedKeys.indexOf(rowId) >= 0)
+                        selected = true;
+                    var cellAttributes = appxTableCreateCellAttribute(widget, selected);
+                    return cellAttributes;
+                }
+                else if (widget == null && defaultRowWidget && defaultRowWidget[cm.name] && defaultRowWidget[cm.name]["cellAttribute"]) {
+                    //if row is selected and it has alternate color/alternate bg rerun the attrset creatrion
+                    if (appxTable.selectedKeys.indexOf(rowId) >= 0
+                        && (defaultRowWidget[cm.name].widget.wAltColorBg || defaultRowWidget[cm.name].widget.wAltColorFg)) {
+                        return appxTableCreateCellAttribute(defaultRowWidget[cm.name].widget, true);
+                    }
+                    else
+                        return defaultRowWidget[cm.name]["cellAttribute"];
+                }
+                else {
+                    //there was no widget to create cellAttrribute
+                    return null;
+                }
+            };
         }
         if (rowsHeightPx > viewHeightPx) {
             vScrollbarWidthPx = 18;
         }
+        //adjust the size of floating column
         if (fixedIdx !== -1) {
             colModel[fixedIdx].width = viewWidthPx - (curWidth + vScrollbarWidthPx + AppxTable._colAddedWidthPx);
+            //if the new size is less than or equal to 0, setr it to 1
+            if (colModel[fixedIdx].width <= 0) {
+                colModel[fixedIdx].width = 1;
+            }
         }
         // Let's set up the gridConfig object used to create our grid
         var gridConfig = {};
         gridConfig.shrinkToFit = false;
-        gridConfig.height = elemHeightPx - 4 - footerHeightPx - headingsHeightPx;
+        gridConfig.height = elemHeightPx - 4 - footerHeightPx - headingsHeightPx - captionHeightPx;
+        //if caption exists reduce an additional pixel
+        if (captionHeightPx > 0)
+            gridConfig.height -= 1;
+        //if header doesnt exist increase by additional 3 pixel
+        if (headingsHeightPx == 0)
+            gridConfig.height += 1;
         gridConfig.width = viewWidthPx;
         gridConfig.scrollOffset = vScrollbarWidthPx;
         gridConfig.mtype = "POST";
@@ -676,9 +996,15 @@ var AppxTable = /** @class */ (function () {
         gridConfig.url = AppxTable._getAppxSession().appxDataCacheUrl;
         gridConfig.pager = "#" + appxTable._pagerElemId;
         gridConfig.page = appxTable._getPage();
-        gridConfig.sortable = function (newMap) {
-            appxTable._columnMoved(this, newMap);
-        };
+        if (appxTable._widgetData && appxTable._widgetData.tableMovableColumn == false) {
+            // @ts-ignore - false is valid value
+            gridConfig.sortable = false;
+        }
+        else {
+            gridConfig.sortable = function (newMap) {
+                appxTable._columnMoved(this, newMap);
+            };
+        }
         gridConfig.resizeStop = function (newWidth, index) {
             appxTable._columnResized(this, newWidth, index);
         };
@@ -718,6 +1044,7 @@ var AppxTable = /** @class */ (function () {
                 postData.search = false;
                 postData.filters = undefined;
             }
+            //            postData.caseSort = appxTable._widgetData.tableCaseSort;
         }
         // Hide the multiselect checkbox column that jqGrid uses to track multi-selected rows
         gridElem.jqGrid('hideCol', 'cb');
@@ -727,7 +1054,16 @@ var AppxTable = /** @class */ (function () {
                 // @ts-ignore - too many arguments to jqGrid() function 
                 gridElem.jqGrid("setLabel", appxTable.colModel[i].name, "", { "text-align": appxTable.colModel[i].align });
             }
-        }
+            //Does this column have widget object?
+            if (colWidget && colWidget[appxTable.colModel[i].name] && colWidget[appxTable.colModel[i].name].widget) {
+                //this is the widget object for this column
+                var wx = colWidget[appxTable.colModel[i].name].widget;
+                //this is the table column tag we are trying to modify
+                var $tag = $("#jqgh_" + appxTable._gridElemId + "_" + appxTable.colModel[i].name);
+                //apply style attributes to this column
+                appxTableApplyColumnStyle(wx, $tag);
+            }
+        } // end for loop
         // Setup the footer bar with the requested options
         var gridSearchOptions = {
             left: "",
@@ -746,12 +1082,28 @@ var AppxTable = /** @class */ (function () {
                 return true;
             }
         };
+        var showSearch = true;
+        if (appxTable._widgetData.tableShowTableSearch == false)
+            showSearch = false;
+        var showRefresh = true;
+        if (appxTable._widgetData.tableShowTableRefresh == false)
+            showRefresh = false;
         // @ts-ignore - too many arguments to jqGrid() function 
-        gridElem.jqGrid('navGrid', "#" + appxTable._pagerElemId, { edit: false, add: false, del: false, beforeRefresh: function () {
+        gridElem.jqGrid('navGrid', "#" + appxTable._pagerElemId, { edit: false, add: false, del: false, refresh: showRefresh, search: showSearch, beforeRefresh: function () {
                 appxTable._clearSelections();
                 appxTable._prefsData.filters = undefined;
             } }, {}, {}, {}, gridSearchOptions);
         AppxTable._addButtonsToFooter(appxTable, id);
+        //set the caption height if exists
+        if (captionHeightPx > 0)
+            $("#" + appxTable._gviewElemId + " .ui-jqgrid-titlebar").css("height", captionHeightPx + "px");
+        //hide column headings
+        if (this._widgetData.tableShowHeading == false) {
+            var header = document.querySelector("#" + appxTable._gviewElemId + " > .ui-jqgrid-hdiv");
+            if (header != null) {
+                header.style.display = "none";
+            }
+        }
         // If we are contained in an Appx window that is not the active Appx process window we want to freeze the table
         if ($("#newtablewidget_" + id).closest(".appxbox").hasClass("appx-not-modifiable")) {
             // @ts-ignore - .block() is valid in this context 
@@ -798,27 +1150,26 @@ var AppxTable = /** @class */ (function () {
                 // @ts-ignore - document.selection exists in IE
                 document.selection.empty();
             }
-            var initialRowSelect = $(elem).jqGrid('getGridParam', 'selrow');
-            var InitialSelectIndex = $(elem).jqGrid('getInd', initialRowSelect);
-            var CurrentSelectIndex = $(elem).jqGrid('getInd', rowid);
-            $(elem).jqGrid('resetSelection');
-            appxTable.selectedKeys = [];
-            if (CurrentSelectIndex > InitialSelectIndex) {
-                var startID = initialRowSelect;
-                var endID = rowid;
-            }
-            else {
-                var startID = rowid;
-                var endID = initialRowSelect;
-            }
-            var shouldSelectRow = false;
-            $.each($(elem).jqGrid('getDataIDs'), function (_, id) {
-                if ((shouldSelectRow = (id == startID) || shouldSelectRow) && (id != rowid)) {
-                    $(elem).jqGrid('setSelection', id, false);
-                    appxTable.selectedKeys.push(id);
+            var initialRowSelect = appxTable.selectedKeys && appxTable.selectedKeys.length > 0
+                ? appxTable.selectedKeys[appxTable.selectedKeys.length - 1]
+                : undefined;
+            appxTable._tableGetRangeKeys(initialRowSelect, rowid, function (resp) {
+                $(elem).jqGrid('resetSelection');
+                appxTable.selectedKeys = [];
+                resp.keys.forEach(function (key) {
+                    $(elem).jqGrid('setSelection', key, false);
+                    appxTable.selectedKeys.push(key);
+                });
+                if (appxTable._transData.clickTimer == undefined && appxTable._widgetData.wCommand != null && appxTable._widgetData.wCommand >= 0) {
+                    if ($(elem).closest(".appxbox").hasClass("appx-not-modifiable") === false && appxIsLocked() === false) {
+                        appxTable._transData.clickTimer = setTimeout(function clickTimer() {
+                            appxTable._transData.clickTimer = undefined;
+                            appxwidgetcallback(appxTable._widgetData.wCommand);
+                        }, AppxTable._DOUBLE_CLICK_TIMER);
+                    }
                 }
-                return id != endID; // This return is for the $.each() function
             });
+            return false;
         }
         return true;
     };
@@ -829,13 +1180,35 @@ var AppxTable = /** @class */ (function () {
      */
     AppxTable.prototype._onSelectRow = function (elem, rowid, status, e) {
         var appxTable = this;
+        var td_elem;
+        //if we have rowWidget use it otherwise user defaultRowWidget
+        // @ts-ignore - rows is a valid attribute
+        for (var i = 0; i < elem.rows[rowid].cells.length; i++) {
+            // @ts-ignore - rows is a valid attribute
+            td_elem = elem.rows[rowid].cells[i];
+            //check if we have altBgColor, change the back-ground color of selected/unselected row
+            if (status && td_elem.getAttribute("altBgColor") != null) {
+                td_elem.style["background-color"] = td_elem.getAttribute("altBgColor");
+            }
+            else {
+                td_elem.style["background-color"] = td_elem.getAttribute("bgColor");
+            }
+            //check if we have altFgColor, change the font color of selected/unselected row
+            if (status && td_elem.getAttribute("altFgColor") != null) {
+                td_elem.style["color"] = td_elem.getAttribute("altFgColor");
+            }
+            else {
+                td_elem.style["color"] = td_elem.getAttribute("fgColor");
+            }
+        }
         // Add or Remove the selections based on state
         if (status)
             appxTable.selectedKeys.push(rowid);
         else
             appxTable.selectedKeys = appxTable.selectedKeys.filter(function (el) { return el !== rowid; });
         // See if we have an Option to fire.  If so defer it so see if we get a double-click
-        if (appxTable._transData.clickTimer == undefined && appxTable._widgetData.wCommand) {
+        // JES 2019-07-22: bug#4436: don't fire "option-0" if table has no single-click action (null)
+        if (appxTable._transData.clickTimer == undefined && appxTable._widgetData.wCommand != null && appxTable._widgetData.wCommand >= 0) {
             if ($(elem).closest(".appxbox").hasClass("appx-not-modifiable") === false && appxIsLocked() === false) {
                 appxTable._transData.clickTimer = setTimeout(function clickTimer() {
                     appxTable._transData.clickTimer = undefined;
@@ -858,8 +1231,11 @@ var AppxTable = /** @class */ (function () {
             clearTimeout(appxTable._transData.clickTimer);
             appxTable._transData.clickTimer = undefined;
         }
-        if ($(elem).closest(".appxbox").hasClass("appx-not-modifiable") === false && appxIsLocked() === false) {
-            appxwidgetcallback(appxTable._widgetData.wCommand2);
+        // JES 2019-07-23: bug#4436b: don't fire "option-0" if table has no double-click action (null)
+        if (appxTable._widgetData.wCommand2 != null && appxTable._widgetData.wCommand2 >= 0) {
+            if ($(elem).closest(".appxbox").hasClass("appx-not-modifiable") === false && appxIsLocked() === false) {
+                appxwidgetcallback(appxTable._widgetData.wCommand2);
+            }
         }
     };
     /**
@@ -899,15 +1275,148 @@ var AppxTable = /** @class */ (function () {
     AppxTable.prototype._gridComplete = function (elem) {
         var appxTable = this;
         var selectedKeys = appxTable.selectedKeys;
+        var wx = appxTable._widgetData;
         // Fix the font and line height to use parent container specs
         var fontSize = $('#' + appxTable._appxElemId).css('font-size');
         var lineHeight = $('#' + appxTable._appxElemId).css('line-height');
-        $("#" + appxTable._gviewElemId + " div").css({
+        /**
+         * Exclude the divs that we manually changed their font-size. We might have set those based on widgets.
+         * They should have class name of "appx-fontsize-adjusted"
+         */
+        $("#" + appxTable._gviewElemId + " div").not(".appx-fontsize-adjusted").css({
             "font-size": fontSize,
             "line-height": lineHeight,
             "padding-top": "0px",
             "padding-bottom": "0px"
         });
+        if (wx) {
+            var st = {};
+            //<font>
+            if (wx.wFontStyle) {
+                switch (wx.wFontStyle) {
+                    case "bold":
+                        st["font-weight"] = "bold";
+                        break;
+                    case "italic":
+                        st["font-style"] = "italic";
+                        break;
+                    case "bolditalic":
+                        st["font-weight"] = "bold";
+                        st["font-style"] = "italic";
+                        break;
+                }
+                //apply font style
+                if (!$.isEmptyObject(st)) {
+                    $("#" + appxTable._gridElemId + " td").not(".appx-fontstyle-adjusted").css(st);
+                }
+            } // </font>
+            var ff = null;
+            st = {};
+            if (wx.wFont) {
+                //Remove the default font and set CUSTOM.css
+                switch (wx.wFont) {
+                    case "helvetica":
+                        ff = "default";
+                        break;
+                    case "Courier":
+                        ff = "courier";
+                        break;
+                    case "Helvetica":
+                        ff = "arial";
+                        break;
+                    case "TimesRoman":
+                        ff = "times-roman";
+                        break;
+                    case "Dialog":
+                        ff = "fixed-sys";
+                        break;
+                    case "DialogInput":
+                        ff = "terminal";
+                        break;
+                    case "ZapfDingbats":
+                        ff = "wingdings";
+                        break;
+                    case "SanSerif":
+                        ff = "ms-sans-serif";
+                        break;
+                    case "Serif":
+                        ff = "ms-serif";
+                        break;
+                    case "Monospaced":
+                        ff = "fixed-sys";
+                        break;
+                }
+                if (ff == null)
+                    st["font-family"] = wx.wFont;
+            }
+            //apply font style
+            if (!$.isEmptyObject(st)) {
+                $("#" + appxTable._gridElemId + " td").not(".appx-font-adjusted").css(st);
+            }
+            if (ff != null) {
+                $("#" + appxTable._gridElemId + " td").not(".appx-font-adjusted").addClass("appx-font-" + ff);
+            }
+            /*  apply font color*/
+            if (wx.wColorFg || wx.wColorFgNL) {
+                var styleRules = "." + appxTable._gridElemId + "-fgColorClass {";
+                var head = document.head || document.getElementsByTagName('head')[0];
+                var styleTag = document.getElementById("appx-dynamic-style");
+                if (styleTag == null) {
+                    styleTag = document.createElement('style');
+                    styleTag.type = "text/css";
+                    styleTag.id = "appx-dynamic-style";
+                }
+                if (wx.wColorFg) {
+                    styleRules += " color:" + wx.wColorFg;
+                    //append opacity to the end of color to make it rgba
+                    if (wx.wColorFgNL) {
+                        styleRules += (wx.wColorBgNL * 255).toString(16);
+                    }
+                    styleRules += ";";
+                }
+                styleRules += "}";
+                //add the <style> tag to <head> tag
+                head.appendChild(styleTag);
+                //add css rules to <style> tag
+                styleTag.appendChild(document.createTextNode(styleRules));
+                $("#" + appxTable._gridElemId + " tr").not(".appx-fgcolor-adjusted").addClass(appxTable._gridElemId + "-fgColorClass");
+            }
+            /*apply bg color
+                Adding bg color is tricky, because the hover is using css class and if we add bgcolour to the
+                element, the the hover doesn't apply the highlight (since class rule cannot override inline rule in css)
+                To overcome this we dynamically create a style tag and class rule and use that to apply the bg color
+            */
+            if (wx.wColorBgNL || wx.wColorBg) {
+                //create a css class rule
+                st = {};
+                var styleRules = "." + appxTable._gridElemId + "-bgClass {";
+                var head = document.head || document.getElementsByTagName('head')[0];
+                var styleTag = document.getElementById("appx-dynamic-style");
+                if (styleTag == null) {
+                    styleTag = document.createElement('style');
+                    styleTag.type = "text/css";
+                    styleTag.id = "appx-dynamic-style";
+                }
+                if (wx.wColorBg) {
+                    styleRules += " background-color:" + wx.wColorBg + ";";
+                    styleRules += " background-image: none;";
+                    st["background-color"] = wx.wColorBg;
+                }
+                if (wx.wColorBgNL) {
+                    styleRules += " opacity:" + wx.wColorBgNL + ";";
+                    st["opacity"] = wx.wColorBgNL;
+                }
+                styleRules += "}";
+                //add the <style> tag to <head> tag
+                head.appendChild(styleTag);
+                //add css rules to <style> tag
+                styleTag.appendChild(document.createTextNode(styleRules));
+                // add the newly added class to all rows in this table
+                $("#" + appxTable._gridElemId + " tr").not(".appx-bgcolor-adjusted").addClass(appxTable._gridElemId + "-bgClass");
+                //also add it to the bdiv so the space with no rows get the color
+                $("#" + appxTable._gviewElemId + " .ui-jqgrid-bdiv").css(st);
+            }
+        }
     };
     /**
      * Name: LOAD BEFORE SEND
@@ -945,32 +1454,33 @@ var AppxTable = /** @class */ (function () {
     AppxTable.prototype._loadComplete = function (elem, data) {
         var appxTable = this;
         var selectedKeys = appxTable.selectedKeys;
-        // Apply selections
+        // Apply selections - Do this here to select records from all pages
         $(elem).jqGrid("resetSelection");
         for (var i = 0; i < selectedKeys.length; i++) {
             $(elem).jqGrid("setSelection", selectedKeys[i], false);
         }
         // Set the scrollTop so the selection is visible.
         if (!appxTable._transData.tableLoaded) {
-            if (data.findId2RowNo && appxTable._tableData.selectedRows) {
-                if (data.findId2RowNo === -1) {
-                    appxTable._clearSelections();
-                }
-                else {
-                    appxTable._tableData.selectedRows[0] = data.findId2RowNo;
-                    var currentPage = $("#" + appxTable._gridElemId).getGridParam("page"); // petepete
-                    if ($("#" + appxTable._gridElemId).jqGrid("getInd", selectedKeys[0]) === false && currentPage !== appxTable._getPage()) {
-                        $("#" + appxTable._gridElemId).setGridParam({ page: appxTable._getPage() });
-                        appxTable._reloadGrid();
-                    }
-                }
-            }
-            $(elem).closest(".ui-jqgrid-bdiv").scrollTop(appxTable._getScrollPosition());
             setTimeout(function pendingTableTimer() {
                 appxTable._transData.pendingXHR--;
                 if (appxTable._transData.pendingXHR == 0 && appx_session.pendingTables > 0) {
                     appxTable._transData.tableLoaded = true;
                     appx_session.pendingTables--;
+                    //scroll the table to appropriate position
+                    if (data.findId2RowNo && appxTable._tableData.selectedRows) {
+                        if (data.findId2RowNo === -1) {
+                            appxTable._clearSelections();
+                        }
+                        else {
+                            appxTable._tableData.selectedRows[0] = data.findId2RowNo;
+                            var currentPage = $("#" + appxTable._gridElemId).getGridParam("page"); // petepete
+                            if ($("#" + appxTable._gridElemId).jqGrid("getInd", selectedKeys[0]) === false && currentPage !== appxTable._getPage()) {
+                                $("#" + appxTable._gridElemId).setGridParam({ page: appxTable._getPage() });
+                                appxTable._reloadGrid();
+                            }
+                        }
+                    }
+                    $(elem).closest(".ui-jqgrid-bdiv").scrollTop(appxTable._getScrollPosition());
                 }
                 if (appx_session.pendingTables === 0) {
                     if (appx_session.pendingResources.length === 0) {
@@ -1055,6 +1565,114 @@ var AppxTable = /** @class */ (function () {
     AppxTable._ELEM_TABLE_PREFIX = "newtablewidget";
     AppxTable._ELEM_PAGER_PREFIX = "pager";
     AppxTable._ELEM_OPTION_PREFIX = "option";
-    AppxTable._DOUBLE_CLICK_TIMER = 250;
+    AppxTable._DOUBLE_CLICK_TIMER = 500;
+    /**
+       * Apply additional settings to the ColModel based on widget information
+       * This function needs to be run before grid creation
+       * Input:
+       *      col: a column object in the colModel array
+       *      colWidget: colwidget array
+       *      tableWidget: Widget information of the table object
+       * return:
+       *      modified col object that it received
+       */
+    AppxTable.setupColModelColumn = function (col, colWidget, tableWidget) {
+        /**
+         * appxTableColumnWidgetHandler returns widget object and an html tag
+         * We use the "width" property of the html tag to come up with the width of the column
+        */
+        var tagwidget = appxTableColumnWidgetHandler(colWidget[col.name].widget_data);
+        colWidget[col.name]["widget"] = tagwidget.widget;
+        var wx = tagwidget.widget;
+        //col header label
+        if (wx.wLabel != null && wx.wLabel != "") {
+            col.label = wx.wLabel;
+        }
+        else {
+            col.label = colWidget[col.name].oLabel;
+        }
+        //col tooltip
+        if (wx.wTooltip != null && wx.wTooltip != "") {
+            col.tooltip = wx.wTooltip;
+        }
+        else {
+            col.tooltip = "";
+        }
+        //col visible
+        /*before changing the hidden property of this column, save the original value*/
+        col.oHidden = col.hidden;
+        if (wx.wVisible != null && wx.wVisible == false) {
+            col.hidden = true;
+        }
+        else if (wx.wVisible != null && wx.wVisible == true) {
+            col.hidden = false;
+        }
+        /*did widget changed the hidden preperty? The hidden property can be changed by widget or by user during runtime*/
+        col.WidetChangedHidden = !(col.hidden == col.oHidden);
+        //col sortable
+        if (wx.tableColumnSortable != null && wx.tableColumnSortable == false) {
+            col.sortable = false;
+        }
+        else if (wx.tableColumnSortable != null && wx.tableColumnSortable == true) {
+            col.sortable = true;
+        }
+        else {
+            /* use table widget as the value of column deosnt have value for this */
+            if (tableWidget && tableWidget.tableColumnSortable == false) {
+                col.sortable = false;
+            }
+            else {
+                col.sortable = true;
+            }
+        }
+        //col sortType - **Sort type = date currently does not work
+        if (wx.tableColumnSortType != null && wx.tableColumnSortType != "") {
+            col.sorttype = wx.tableColumnSortType;
+        }
+        // date format - This currently doesn't work. We need to assign an integer 
+        // value that represents the date (based on this format) to the index column for this to work 
+        if (wx.tableColumnDateFormat != null && wx.tableColumnDateFormat != "") {
+            col.datefmt = wx.tableColumnDateFormat;
+            col.editrules = { "date": true };
+        }
+        //col resizable
+        if (wx.tableColumnResizable != null && wx.tableColumnResizable == false) {
+            col.resizable = false;
+        }
+        else if (wx.tableColumnResizable != null && wx.tableColumnResizable == true) {
+            col.resizable = true;
+        }
+        else {
+            /* use table widget as the value of column deosnt have value for this */
+            if (tableWidget && tableWidget.tableColumnResizable == false) {
+                col.resizable = false;
+            }
+            else {
+                col.resizable = true;
+            }
+        }
+        //col searchable
+        if (wx.tableColumnSearchable != null && wx.tableColumnSearchable == false) {
+            col.search = false;
+        }
+        else {
+            col.search = true;
+        }
+        //col classes
+        if (wx.wClasses != null && wx.wClasses != "") {
+            col.classes = wx.wClasses;
+        }
+        else {
+            col.classes = "";
+        }
+        //col width - don't reset, otherwise client looses the user expanded width everytime the table refreshes
+        if (tagwidget.tag.css("width")) {
+            var w = parseInt(tagwidget.tag.css("width").split("px")[0]);
+            if (w != null && w > 0) {
+                col.width = w;
+            }
+        }
+        return col;
+    };
     return AppxTable;
 }());

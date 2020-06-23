@@ -1,4 +1,4 @@
-﻿/*********************************************************************
+/*********************************************************************
  **
  **   server/appx-client-resource.js - Client Resource processing
  **
@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-resource.js,v 1.55 2018/11/08 16:48:49 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-resource.js,v 1.59 2019/07/23 18:50:47 m.karimi Exp $";
 
 //RESOURCE Message Handler
 //Injects an Image into the DOM with an Object URL
@@ -124,7 +124,7 @@ AppxResource.handler = function AppxResource_handler(x) {
             }
             if ((Math.abs(appx_session.current_show.curraction[0] & M_WAIT) == 0) &&
                 (appx_session.pendingResources.length == 0)) {
-                sendappxshow(0, []);
+                sendappxshow(OPT_NULL, []);
             }
         }
         catch (ex) {

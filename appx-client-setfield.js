@@ -1,4 +1,4 @@
-﻿
+
 /*********************************************************************
  **
  **   server/appx-client-setfield.js - Client Set Field processing
@@ -7,7 +7,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-setfield.js,v 1.10 2018/05/16 20:27:00 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-setfield.js,v 1.11 2019/05/13 13:01:20 pete Exp $";
 
 function appxsetfieldhandler(x) {
     setfield(x);

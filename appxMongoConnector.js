@@ -1,7 +1,7 @@
-﻿"use strict";
+"use strict";
 
-var mongoConnectorVersionStr = "6.0.0.19011401";
-var mongoConnectorVersionNum = 60000.19011401;
+var mongoConnectorVersionStr = "6.0.0.20040817";
+var mongoConnectorVersionNum = 60000.20040817;
 
 const cluster = require('cluster');
 const os = require('os');
@@ -13,16 +13,16 @@ const os = require('os');
 const connectorPort    = process.env.APPX_MONGO_CONNECTOR_PORT; // Port the appxConnector listens on for client connections
 const workers          = os.cpus().length;                      // Number of worker processes spawned to listen for incoming connections
 
-const sslEnabled       = false;                                 // Are we using SSL for our connections?
-const sslPrivateKey    = "/etc/pki/tls/private/appx.key";       // SSL Privte Key file is using SSL
+const sslEnabled       = true;                                 // Are we using SSL for our connections?
+const sslPrivateKey    = "/etc/pki/tls/private/appx.com.key";       // SSL Privte Key file is using SSL
 const sslCertificate   = "/etc/pki/tls/certs/appx.com.crt";     // SSL Certificate file if using SSL
-const sslCertAuthority = "/etc/pki/tls/certs/gd_bundle.crt";    // SSL Certificate Authority file if using SSL
+const sslCertAuthority = "/etc/pki/tls/certs/ca-bundle.crt";    // SSL Certificate Authority file if using SSL
 
 const mongoDatabase    = "AppxDatabaseCache";                   // The name of the database in Mongo we use to cache all of our data
 const mongoPrefs       = "AppxUserPrefs";                       // The name of the database in Mongo we use to store user prefs
 const mongoHost        = "localhost";                           // The hostname of the server mongo is running on
 const mongoPort        = 27017;                                 // The port number on that server that mongo is listening on
-
+const mongoLocale      = "en";
 const appxdebug        = false;
 
 //  *********************************************************
@@ -31,6 +31,19 @@ const appxdebug        = false;
 
 function dlog( msg, obj ) {
     if( appxdebug ) {
+	var nowStr = new Date(Date.now()).toISOString();
+	if( obj ) {
+	    console.log( nowStr + " - " + msg + "..." );
+	    console.dir(obj);
+	}
+	else {
+	    console.log( nowStr + " - " + msg );
+	}
+    }
+}
+
+function dlogForce( msg, obj ) {
+    if( true ) {
 	var nowStr = new Date(Date.now()).toISOString();
 	if( obj ) {
 	    console.log( nowStr + " - " + msg + "..." );
@@ -90,16 +103,20 @@ function workerCode() {
         Library Imports - End
     *************************************************************/
 
-    // Global variabls and Objects
+    // Global variables and Objects
 
     var mongoUrl = 'mongodb://' + mongoHost + ':' + mongoPort + '/?maxpoolSize=20';
+	var mongoOptions = {
+		 useNewUrlParser: true,
+		 useUnifiedTopology: true
+	};
     var mongoCacheDb = null;
     var mongoUserPrefsDb = null;
     var mongoStatus = "Running";
 
-    MongoClient.connect(mongoUrl, { useNewUrlParser: true }, function mongoClient_connectCallback(err, client) {
+    MongoClient.connect(mongoUrl, mongoOptions, function mongoClient_connectCallback(err, client) {
         if (err) {
-            dlog(err);
+            dlog("Error during connection: " + err);
             mongoStatus = "Error";
         } else {
             mongoCacheDb = client.db(mongoDatabase);
@@ -154,7 +171,12 @@ function workerCode() {
                         data = parseFloat(data);
                         break;
                     case "B":
-                        data = "Y";
+		        var tmpdata = data.toLowerCase();
+		        if( tmpdata == "y" || tmpdata == "1" || tmpdata == "t" || tmpdata == "true" || tmpdata == "yes" ) {
+                            data = "Y";
+			} else {
+			    data = "N";
+			}
                         break;
                 }
 
@@ -306,62 +328,76 @@ function workerCode() {
         // that callback we send the records to the client.  Whew, that's a lot of callbacks.
 
         // We are in the OPEN callback
-        try {
-            mongoCacheDb.collection(message.collection, function mongoCacheDb_collectionCallback(err, collection) {
+        try{
+            mongoCacheDb.collection(message.collection, function mongoCacheDb_collectionCallback(err, collection) 
+            {
                 // We are in the GET COLLECTION callback
                 var selection = buildMongoSelection(message);
                 var sorter = buildMongoSort(message);
                 var collist = {};
-		var collistId2 = { id2: 1 };
+                var collistId2 = { id2: 1 };
+                var caseSort = message.caseSort == "true";
+                var collationOptions =  {};
+
+                if( caseSort == false ) {
+                    collationOptions["locale"] = mongoLocale;
+                }
 
                 if (collection !== undefined) {
                     if (message.collist) {
                         collist = JSON.parse(message.collist);
                     }
 
-                    collection.createIndex(sorter);
+                    collection.createIndex(sorter, { collation: collationOptions });
 
-                    collection.find({
-                        $and: [{
-                            "datalookupid": message.datalookupid
-                        }, selection]
-		    }, collistId2).sort(sorter).toArray(function mongoCountCallback(err, items) {
-			var totalcount = items === undefined ? 0 : items.length;
-			var selectedRow = -1;
-			if( message.findId2 && totalcount > 0 ) {
-			    for( var k = 0; k < totalcount; k++ ) {
-				if( message.findId2 === items[k].id2 ) {
-				    selectedRow = k + 1;
-				    break;
-				}
-			    }
-			}
-                        // We are in the COUNT results callback
-                        collection.find({
-                            $and: [{
-                                "datalookupid": message.datalookupid
-                            }, selection]
-                        }, collist).sort(sorter).skip((parseInt(message.page) - 1) * parseInt(message.rows)).limit(parseInt(message.rows)).toArray(function mongoFindCallback(err, items) {
-                            // We are in the GET RECORDS callback
-                            var rowtmp = [];
-                            var result = {};
-
-                            result.records = parseInt(totalcount);
-                            result.page = parseInt(message.page);
-                            result.total = Math.ceil(parseInt(totalcount) / parseInt(message.rows));
-			    if( message.findId2 ) {
-				result.findId2RowNo = selectedRow;
-			    }
-                            if (items) {
-                                for (var i = 0; i < items.length; i++) {
-                                    rowtmp.push(items[i]);
+                    collection.find( { $and: [ {"datalookupid": message.datalookupid}, selection]}, collistId2)
+                        .collation(collationOptions)
+                        .sort(sorter)
+                        .toArray(function mongoCountCallback(err, items) 
+                        {
+                            if( err != undefined )
+                                dlog("Error in mongoCountCallback: ", err);
+                            var totalcount = (items === undefined || items == null) ? 0 : items.length;
+                            var selectedRow = -1;
+                            if( message.findId2 && totalcount > 0 ) {
+                                for( var k = 0; k < totalcount; k++ ) {
+                                    if( message.findId2 === items[k].id2 ) {
+                                        selectedRow = k + 1;
+                                        break;
+                                    }
                                 }
                             }
+                            // We are in the COUNT results callback
+                            collection.find({ $and: [{ "datalookupid": message.datalookupid}, selection]}, collist)
+                                .collation(collationOptions)
+                                .sort(sorter)
+                                .skip((parseInt(message.page) - 1) * parseInt(message.rows))
+                                .limit(parseInt(message.rows))
+                                .toArray(function mongoFindCallback(err, items) 
+                                    {
+                                        // We are in the GET RECORDS callback
+                                        var rowtmp = [];
+                                        var result = {};
+                                        
+                                        if( err != undefined )
+                                            dlog("Error in mongoFindCallback: ", err);
 
-                            result["rows"] = rowtmp;
-                            res.end(JSON.stringify(result).replace(/[<][/]?p[>]/gi,""));
-                        });
-                    });
+                                        result.records = parseInt(totalcount);
+                                        result.page = parseInt(message.page);
+                                        result.total = Math.ceil(parseInt(totalcount) / parseInt(message.rows));
+                                        if( message.findId2 ) {
+                                            result.findId2RowNo = selectedRow;
+                                        }
+                                        if (items) {
+                                            for (var i = 0; i < items.length; i++) {
+                                                rowtmp.push(items[i]);
+                                            }
+                                        }
+
+                                        result["rows"] = rowtmp;
+                                        res.end(JSON.stringify(result).replace(/[<][/]?p[>]/gi,""));
+                                    });
+                            });
                 } else {
                     dlog("Error getting table data: " + err);
                 }
@@ -436,24 +472,24 @@ function workerCode() {
     };
 
     var getuserprefs = function getuserprefs(message, res) {
-	var myQuery = { _id: message.prefKey };
-	mongoUserPrefsDb.collection(message.prefType).findOne( myQuery, function( err, result ){
-		if( err ) {
-		    dlog("getUserPrefs() find failed, err="+err, message);
-		    var reply = { result: "failed" }
-		    res.end(JSON.stringify(reply));
-		}
-		else {
-		    if( result ) {
-			var reply = { result: "ok", prefData: result.prefData }
-			res.end(JSON.stringify(reply));
-		    }
-		    else {
-			var reply = { result: "ok", prefData: "{}" }
-			res.end(JSON.stringify(reply));
-		    }
-		}
-	    });
+        var myQuery = { _id: message.prefKey };
+        mongoUserPrefsDb.collection(message.prefType).findOne( myQuery, function( err, result ){
+            if( err ) {
+                dlog("getUserPrefs() find failed, err="+err, message);
+                var reply = { result: "failed" }
+                res.end(JSON.stringify(reply));
+            }
+            else {
+                if( result ) { 
+                var reply = { result: "ok", prefData: result.prefData }
+                res.end(JSON.stringify(reply));
+                }
+                else {
+                var reply = { result: "ok", prefData: "{}" }
+                res.end(JSON.stringify(reply));
+                }
+            }
+            });
     }
 
     var setuserprefs = function setuserprefs(message, res) {
@@ -524,108 +560,189 @@ function workerCode() {
      */
     var fetchtabledata_csv = function fetchtabledata_csv(message, res) {
 
-	// Helper to add a leading zero if needed
-	function zeroFill( i ) {
-	    return  i < 10  ? '0' + i : '' + i;
+	    // Helper to add a leading zero if needed
+        function zeroFill( i ) {
+            return  i < 10  ? '0' + i : '' + i;
         }
 
-	// Helper to create a raw date/time string from a date object
-	function getDateStr( dateObj ) {
-	    let result = dateObj.getFullYear().toString() +
-	    zeroFill( dateObj.getMonth()   ) +
-	    zeroFill( dateObj.getDay()     ) + "-" +
-	    zeroFill( dateObj.getHours()   ) +
-	    zeroFill( dateObj.getMinutes() ) +
-	    zeroFill( dateObj.getSeconds() );
-	    return result;
-	}
+        // Helper to create a raw date/time string from a date object
+        function getDateStr( dateObj ) {
+            let result = dateObj.getFullYear().toString() +
+            zeroFill( dateObj.getMonth()   ) +
+            zeroFill( dateObj.getDay()     ) + "-" +
+            zeroFill( dateObj.getHours()   ) +
+            zeroFill( dateObj.getMinutes() ) +
+            zeroFill( dateObj.getSeconds() );
+            return result;
+        }
 
-	// Helper to convert a value to CSV compatible format
-	function itemToCsv( itemName, itemValue ) {
-	    let isStr = itemName == null || itemName == undefined || itemName.match(/A$/) ? true : false;
-	    if( isStr === false ) 
-		return itemValue.trim();
-	    if( itemValue.indexOf('"') > -1 || itemValue.indexOf(',') > -1 || itemValue.indexOf('\n') > -1 || itemValue.indexOf('\r') > -1 ) {
-		return '"'+itemValue.replace(/["]/g,'""')+'"';
-	    }
-	    return itemValue.trim();
-	}
+        // Helper to convert a value to CSV compatible format
+        function itemToCsv( itemName, itemValue ) {
+            let isStr = itemName == null || itemName == undefined || itemName.match(/A$/) ? true : false;
+            if( isStr === false ) 
+            return itemValue.trim();
+            if( itemValue.indexOf('"') > -1 || itemValue.indexOf(',') > -1 || itemValue.indexOf('\n') > -1 || itemValue.indexOf('\r') > -1 ) {
+            return '"'+itemValue.replace(/["]/g,'""')+'"';
+            }
+            return itemValue.trim();
+        }
+
+        try{
+            mongoCacheDb.collection(message.collection, function mongoCacheDb_collectionCallback(err, collection) {
+
+                // If we didn't get a collection error out
+                if (collection === undefined) {
+                    let result = { "status": false, "url": "" };
+                    res.end(JSON.stringify(result));
+                }
+
+                // We are in the GET COLLECTION callback
+                var selection = buildMongoSelection(message);
+                var sorter = buildMongoSort(message);
+                var collist = {};
+                var csvHeader = "";
+                //add collation 
+                var caseSort = message.caseSort == "true";
+                var collationOptions =  {};
+
+                if( caseSort == false ) {
+                    collationOptions["locale"] = mongoLocale;
+                }
+                //make sort column indexed so mongo doesnt overflow
+                collection.createIndex(sorter, { collation: collationOptions });
+
+                // Let's put together a subset of field names and labels to requet from the database		
+                let csvList = [];
+                message.colModel.forEach(function(item){
+                    if( (item.hidden === undefined || item.hidden === false) && item.name !== "rn" ) {
+                        // Build out list of columns to request from our mongo table
+                        collist[item.name] = 1;
+                        // Build a list to use names/labels to use in building out CSV records
+                        csvList.push( { 
+                        name:  item.name, 
+                        label: item.label && item.label.length > 0 ? item.label : item.name 
+                        });
+                    }
+                });
+
+                // Let's set up our GridFSBucket to hold out CSV file
+                let fileName = "tableExport-" + getDateStr( new Date() ) + ".csv";
+                let gb = new GridFSBucket(mongoCacheDb, { bucketName: message.collection });
+                let rStream = new Readable({ read(size) {  } });
+                let uploadStream = gb.openUploadStream(fileName);
+                uploadStream.options.metadata = {
+                    'url': "/getFile/" + message.collection + "/" + fileName,
+                    'id': uploadStream.id
+                };
+
+                // Add a finish handler to send the result after the CSV file is completely written
+                uploadStream.once("finish", function uploadStream_onceFinish_csv() {
+                    let result = { "status": true, "url": "/getFile/"+message.collection+"/"+fileName };
+                    res.end(JSON.stringify(result));
+                });
+
+                // Add a stream pipe to make it easier to write CSV data into our gridfs file
+                rStream.pipe(uploadStream);
+
+                // Create and write the CSV header record
+                csvList.forEach(function (item) {
+                    if( csvHeader.length > 0 )
+                        csvHeader += ",";
+                    csvHeader += itemToCsv( null, item.label );
+                });
+                rStream.push(csvHeader + '\n');
+                collection.find({ $and: [{"datalookupid": message.datalookupid}, selection] }, { projection: collist } )
+                          .collation(collationOptions)
+                          .sort(sorter)
+                          .toArray(function mongoFindCallback(err, rows) 
+                {
+                    if(err != undefined)
+                        dlog("Error: csv to array error",err);
+                    // We have data, parse through each item
+                    if (rows) {
+                        for (var i = 0; i < rows.length; i++) {
+                        
+                            // Build a CSV data record
+                            let csvRec = "";
+                            let comma = "";
+                            csvList.forEach(function (item) {
+                                csvRec += comma + itemToCsv(item.name,rows[i][item.name]);
+                                comma = ",";
+                            });
+                            rStream.push(csvRec + "\n");
+                        }
+                    }
+                    rStream.push(null);
+
+                }); // toArray()
+            }); // collection()
+
+        } catch (e) {
+            dlog("ERROR: connecting to db");
+            dlog(e);
+            dlog(e.stack);
+        }
+    };
+
+    /**
+     * Get list of record keys for range selection
+     *
+     * @param message: The postData from the client telling us what keys to get
+     * @param res: http response from browser
+     */
+    var fetchrangeofkeys = function fetchrangeofkeys(message, res) {
 
         try {
             mongoCacheDb.collection(message.collection, function mongoCacheDb_collectionCallback(err, collection) {
-
 		// If we didn't get a collection error out
 		if (collection === undefined) {
-		    let result = { "status": false, "url": "" };
+		    let result = { "status": false, "keys": [] };
 		    res.end(JSON.stringify(result));
 		}
 
                 // We are in the GET COLLECTION callback
                 var selection = buildMongoSelection(message);
                 var sorter = buildMongoSort(message);
-                var collist = {};
-		var csvHeader = "";
-
-		// Let's put together a subset of field names and labels to requet from the database		
-		let csvList = [];
-		message.colModel.forEach(function(item){
-			if( (item.hidden === undefined || item.hidden === false) && item.name !== "rn" ) {
-			    // Build out list of columns to request from our mongo table
-			    collist[item.name] = 1;
-			    // Build a list to use names/labels to use in building out CSV records
-			    csvList.push( { 
-				name:  item.name, 
-				label: item.label && item.label.length > 0 ? item.label : item.name 
-			    });
-			}
-		});
-
-		// Let's set up our GridFSBucket to hold out CSV file
-		let fileName = "tableExport-" + getDateStr( new Date() ) + ".csv";
-		let gb = new GridFSBucket(mongoCacheDb, { bucketName: message.collection });
-		let rStream = new Readable({ read(size) { } });
-		let uploadStream = gb.openUploadStream(fileName);
-		uploadStream.options.metadata = {
-		    'url': "/getFile/" + message.collection + "/" + fileName,
-		    'id': uploadStream.id
-		};
-
-		// Add a finish handler to send the result after the CSV file is completely written
-		uploadStream.once("finish", function uploadStream_onceFinish_csv() {
-			let result = { "status": true, "url": "/getFile/"+message.collection+"/"+fileName };
-			res.end(JSON.stringify(result));
-		});
-
-		// Add a stream pipe to make it easier to write CSV data into our gridfs file
-		rStream.pipe(uploadStream);
-		
-		// Create and write the CSV header record
-		csvList.forEach(function (item) {
-			if( csvHeader.length > 0 )
-			    csvHeader += ",";
-			csvHeader += itemToCsv( null, item.label );
-		});
-		rStream.push(csvHeader + '\n');
+                var collist = { "_id": false, "id2": true };
+		var keylist = [];
+		var keyBeg = message.keyBeg;
+		var keyEnd = message.keyEnd;
 
 		collection.find({ $and: [{"datalookupid": message.datalookupid}, selection] }, { projection: collist } )
 		          .sort(sorter)
 		          .toArray(function mongoFindCallback(err, rows) {
-
-				  // We have data, parse through each item
+				  // We have data, parse through each item until we hit the end of the range
 				  if (rows) {
 				      for (var i = 0; i < rows.length; i++) {
+
+					  if( keyBeg == undefined || keyEnd == undefined ) {
+					      keylist.push(rows[i]["id2"]);
+					  }
+
+					  if( keyBeg != undefined && keyBeg == rows[i]["id2"] ) {
+					      keyBeg = undefined;
+					      if( keyEnd == undefined ) {
+						  break;
+					      }
+					      else {
+						  keylist.push(rows[i]["id2"]);
+					      }
+					  }
 					  
-					  // Build a CSV data record
-					  let csvRec = "";
-					  let comma = "";
-					  csvList.forEach(function (item) {
-						  csvRec += comma + itemToCsv(item.name,rows[i][item.name]);
-						  comma = ",";
-					      });
-					  rStream.push(csvRec + "\n");
+					  if( keyEnd != undefined && keyEnd == rows[i]["id2"] ) {
+					      keyEnd = undefined;
+					      if( keyBeg == undefined ) {
+						  break;
+					      }
+					      else {
+						  keylist.push(rows[i]["id2"]);
+					      }
+					  }
 				      }
 				  }
-				  rStream.push(null);
+
+				  let result = { "status": true, "keys": keylist };
+				  res.end(JSON.stringify(result));
 
 			  }); // toArray()
 		}); // collection()
@@ -659,7 +776,7 @@ function workerCode() {
                 });
                 res.end();
             }
-            if (req.method === "POST") {
+            else if (req.method === "POST") {
                 if (url_parts.pathname.indexOf("/upload/") != -1) {
                     /*If we are sending file to be uploaded to mongo*/
                     var fgb = url_parts.pathname.substring(url_parts.pathname.indexOf("/upload/") + 8);
@@ -672,6 +789,7 @@ function workerCode() {
                     var uploadStream = gb.openUploadStream(fileName);
 
                     uploadStream.on("error", function uploadStream_onError(error) {
+                        dlogForce("appxMongoConnector /upload/ ERROR filename="+uploadStream.filename+", length="+uploadStream.length+", error="+error,uploadStream.state);
                         res.writeHead("500", {
                             'Access-Control-Allow-Origin': '*',
                             'Bucket': fgb
@@ -682,6 +800,7 @@ function workerCode() {
                         uploadStream = null;
                     });
                     uploadStream.once("finish", function uploadStream_onceFinish() {
+                        dlogForce("appxMongoConnector /upload/ FINISH filename="+uploadStream.filename+", length="+uploadStream.length);
                         res.writeHead("201", {
                             'Access-Control-Allow-Origin': '*',
                             'Bucket': fgb
@@ -733,14 +852,14 @@ function workerCode() {
                     });
 
                     req.on("end", function req_onEndCallback() {
-			if( req.headers["content-type"] === "application/json" ) {
-			    query = JSON.parse(postData);
-			}
-			else {
-			    var qString = require("querystring");
-			    query = qString.parse(postData);
-			}
-                        getData();
+                        if( req.headers["content-type"] === "application/json" ) {
+                            query = JSON.parse(postData);
+                        }
+                        else {
+                            var qString = require("querystring");
+                            query = qString.parse(postData);
+                        }
+                                    getData();
                     });
                 }
             } else if (req.method === "HEAD") {
@@ -781,7 +900,7 @@ function workerCode() {
                         'Access-Control-Allow-Origin': '*',
                         'Content-Type': 'application/json'
                     });
-		    dlog(Date.now() + " - Got request for grid data... ");
+		            dlog(Date.now() + " - Got request for grid data... ");
                     fetchtabledata(query, res);
 
                 }
@@ -790,7 +909,7 @@ function workerCode() {
                         'Access-Control-Allow-Origin': '*',
                         'Content-Type': 'application/json'
                     });
-		    dlog(Date.now() + " - Got request for grid findrow... ");
+		            dlog(Date.now() + " - Got request for grid findrow... ");
                     fetchtabledata_findrow(query, res);
 
                 }
@@ -801,6 +920,14 @@ function workerCode() {
 				});
 		    
 		    fetchtabledata_csv(query, res);
+		}
+		else if (url_parts.pathname.indexOf('/getRangeKeys') != -1) {
+		    res.writeHead(200, {
+			    'Access-Control-Allow-Origin': '*',
+				'Content-Type': 'application/json'
+				});
+		    
+		    fetchrangeofkeys(query, res);
 		}
 		else if (url_parts.pathname.indexOf('/setUserPrefs') != -1) {
 		    res.writeHead(200, {
@@ -847,7 +974,7 @@ function workerCode() {
                         rStream.push(null);
                     });
 
-                } else if (url_parts.pathname.indexOf("/getFile/") != -1) {
+        } else if (url_parts.pathname.indexOf("/getFile/") != -1) {
 
                     /*If we pushed file into mongo to be displayed in the browser or use
                      **the browser to save file to client*/
@@ -894,7 +1021,7 @@ function workerCode() {
                         rStream.push(null)
                     });
 
-                } else if (url_parts.pathname.indexOf("/userPrefs/") != -1) {
+        } else if (url_parts.pathname.indexOf("/userPrefs/") != -1) {
                     /*Grab user preferences stored in mongo and send down to client*/
                     var fgb = url_parts.pathname.substring(url_parts.pathname.indexOf("/userPrefs/") + 11);
 		            fgb = fgb.substring(0, fgb.lastIndexOf("/"));
@@ -945,7 +1072,7 @@ function workerCode() {
                         rStream.push(Buffer.from("{}"));
                         rStream.push(null);
                     }
-                }
+        }
             }
         }
 

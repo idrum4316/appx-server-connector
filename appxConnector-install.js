@@ -20,8 +20,8 @@ connectors.
 ###############################################################################
 */
 
-var serverConnectorInstallVersionStr = "6.0.0.19011401";
-var serverConnectorInstallVersionNum = 60000.19011401;
+var serverConnectorInstallVersionStr = "6.0.0.20040817";
+var serverConnectorInstallVersionNum = 60000.20040817;
 
 var args = process.argv.slice(2);
 var exec = require('child_process').execSync;
@@ -50,7 +50,7 @@ var modules = [
     'node-cryptojs-aes',
     'semver-compare',
     'streamifier',
-    'string',
+    'string-strip-html',
     'string_decoder',
     'url',
     'ws'
@@ -59,6 +59,8 @@ var services = [
     {
         name: 'appxConnector',
         description: 'Connector that allows appx client to talk to server.',
+        user: 'root',
+        group: 'root',
         script: 'appxConnector.js',
         cwd: require('path').resolve(__dirname),
         //Set variable so appxConnector.js knows where to push files to.
@@ -77,6 +79,10 @@ var services = [
     {
         name: 'appxMongoConnector',
         description: 'Connector that allows browser to make requests to mongo database.',
+        wants: 'mongod.service',
+        after: 'network.target mongod.service',
+        user: 'root',
+        group: 'root',
         script: 'appxMongoConnector.js',
         cwd: require('path').resolve(__dirname),
         //Set variable so appxConnector.js knows where to push files to.
@@ -243,10 +249,7 @@ function moduleTest() {
 
             });
         });
-
-
     }
-
 }
 
 /*
@@ -307,6 +310,13 @@ function installService(mService, mBoth) {
 
     svc.on('start', function () {
         console.log("Service " + services[mService].name + " started");
+        
+        // Run 'systemctl enable' so the service will autostart 
+        //var exec = require('child_process').exec;
+        //var cmd = 'systemctl enable '+services[mService].name.toLowerCase();
+        //console.log('Running %s...', cmd);
+        //exec(cmd,function(err){ console.log('Error: %s...', err); });
+        
         if (++mService < services.length && mBoth) {
             installService(mService);
         } else {
@@ -354,9 +364,12 @@ function checkMongo(callback) {
     var MongoClient = require('mongodb').MongoClient;
     var MongoServer = require('mongodb').Server;
     var mongoUrl = 'mongodb://' + mongoHost + ':' + mongoPort + '/' + mongoDatabase;
+	var mongoOptions = {
+		 useUnifiedTopology: true
+	};
     var mongoCacheDb = null;
 
-    MongoClient.connect(mongoUrl, function (err, client) {
+    MongoClient.connect(mongoUrl, mongoOptions, function (err, client) {
         if (err) {
             console.log("Unable to connect to MongoDatabase Server. Make sure MongoDB server has been installed, configured, and started on your server before continuing. This is a separate setup from installing the \"Node.js MongoDB driver API\" using 'npm install mongodb'. You need to visit the website and follow the instructions for installing the server. (https://www.mongodb.org/downloads)");
             process.exit();
@@ -394,9 +407,21 @@ function replaceFile( dstFile, srcFile ) {
 
 /*Start running script by calling the checkPlatform function*/
 checkPlatform(true, function checkPlatform_Callback() {
-    moduleTest();
-    fs = require('fs');
-
+	fs = require('fs');
+	
+	// For windows, the 'node-windows' package is no longer maintained so we need to update that package
+	//	with a newer version of the 'winsw.exe' binary and the script file 'daemon.js'
+	if (process.platform == 'win32') {
+		fs.copyFile('winsw-2.3.0-bin.exe', './node_modules/node-windows/bin/winsw/winsw.exe', (err) => {
+			if (err) throw err;
+			console.log('winsw.exe was updated for node-windows');
+		});	
+		fs.copyFile('daemon.js', './node_modules/node-windows/lib/daemon.js', (err) => {
+			if (err) throw err;
+			console.log('daemon.js was updated for node-windows');
+		});
+	}
+    
     var file = "appx-client-automaticLogin.js";
     fs.stat(file, function (err, stats) {
         if (err !== null) {
@@ -404,9 +429,15 @@ checkPlatform(true, function checkPlatform_Callback() {
         }
     });
 
-    // For linux systemd servers we need to copy a custom service file template into place
-    if (process.platform === "linux") {
-	replaceFile( "node_modules/node-linux/lib/templates/systemd/service",         "systemd/service" );
-	replaceFile( "node_modules/node-linux/lib/templates/systemd/service-wrapper", "systemd/service-wrapper" );
+    // For linux, we need to copy a custom service file template into place and since the 'node-linux' package
+    //  is no longer maintained so we need to update that package with a newer version of the script files 'daemon.js', 'systemd.js' and 'systemv.js'
+    if (process.platform == "linux") {
+    	replaceFile( "node_modules/node-linux/lib/templates/systemd/service", "systemd/service" );
+    	replaceFile( "node_modules/node-linux/lib/templates/systemd/service-wrapper", "systemd/service-wrapper" );
+		fs.copyFileSync('./systemd/daemon.js', './node_modules/node-linux/lib/daemon.js');
+		fs.copyFileSync('./systemd/systemd.js', './node_modules/node-linux/lib/systemd.js');
+		fs.copyFileSync('./systemd/systemv.js', './node_modules/node-linux/lib/systemv.js');
     }
+    
+    moduleTest();
 });

@@ -1,4 +1,4 @@
-﻿/*********************************************************************
+/*********************************************************************
  **
  **   server/appx-client-localos.js - Client local OS interface
  **
@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-localos.js,v 1.93 2018/08/15 19:30:14 jnelson Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-localos.js,v 1.99 2020/03/18 15:52:30 m.karimi Exp $";
 function appxIsLocalReady() {
     return (localos_session && localos_session.ws.readyState == 1)
 }
@@ -117,7 +117,8 @@ function appxsetclipboardhandler(x) {
             cmd: 'setclipboard',
             args: [clipboardobj.data],
             handler: 'localos_setclipboard_handler',
-            data: null
+            data: null,
+	    authToken: localStorage.authToken
         };
         localos_session.ws.send(JSON.stringify(ms));
     }
@@ -133,7 +134,8 @@ function appxgetclipboardhandler(x) {
             cmd: 'getclipboard',
             args: ["getclipboard"],
             handler: 'localos_exeoscmd_handler',
-            data: null
+            data: null,
+	    authToken: localStorage.authToken
         };
         localos_session.ws.send(JSON.stringify(ms));
     }
@@ -212,7 +214,8 @@ function appxloadurlhandler(x) {
                     cmd: 'execoscmd',
                     args: [urlString.substring(1)],
                     handler: 'localos_exeoscmd_handler',
-                    data: null
+                    data: null,
+		    authToken: localStorage.authToken
                 };
                 if (appxIsLocalReady()) {
                     localos_session.ws.send(JSON.stringify(ms));
@@ -231,15 +234,16 @@ function appxloadurlhandler(x) {
             try {
                 var prtcmd = appx_session.parseOption(urlString.substring(7).trim());
                 if (appx_session.globals["os"].indexOf("Win") > -1) {
-                    if (prtcmd.indexOf(".txt") > -1) {
+                    //if (prtcmd.indexOf(".txt") > -1) {
                         ms = {
                             cmd: 'execoscmd',
                             args: ['\"' + appx_session.local_environment.currentworkingdirectory + '\\bin\\winprint.exe\" ' + prtcmd],
                             handler: 'localos_exeoscmd_handler',
-                            data: null
+                            data: null,
+			    authToken: localStorage.authToken
                         };
-                    }
-                    else {
+                    //}
+                   /*  else {
                         if (prtcmd.indexOf(".cfg") > -1) {
                             prtcmd = prtcmd.substring(prtcmd.indexOf(".cfg"), prtcmd.length);
                             prtcmd = prtcmd.replace(/\"/g, "\'");
@@ -249,9 +253,10 @@ function appxloadurlhandler(x) {
                             cmd: 'execoscmd',
                             args: ['powershell -Command "& {start-process \"' + prtcmd + '\" -Verb Print}"'],
                             handler: 'localos_exeoscmd_handler',
-                            data: null
+                            data: null,
+			    authToken: localStorage.authToken
                         };
-                    }
+                    } */
                 }
                 else {
                     //linux and mac
@@ -259,7 +264,8 @@ function appxloadurlhandler(x) {
                         cmd: 'execoscmd',
                         args: ['\"' + appx_session.local_environment.currentworkingdirectory + '/bin/appx_print\" ' + prtcmd],
                         handler: 'localos_exeoscmd_handler',
-                        data: null
+                        data: null,
+			authToken: localStorage.authToken
                     };
                 }
                 if (appxIsLocalReady()) {
@@ -281,7 +287,8 @@ function appxloadurlhandler(x) {
                 cmd: 'execoscmd',
                 args: [appx_session.parseOption("$(cacheRoot)") + "\\print-dialog.exe"],
                 handler: 'localos_exeoscmd_handler',
-                data: null
+                data: null,
+		authToken: localStorage.authToken
             };
             if (appxIsLocalReady()) {
                 localos_session.ws.send(JSON.stringify(ms));
@@ -295,7 +302,8 @@ function appxloadurlhandler(x) {
                 cmd: 'execoscmd',
                 args: [buildOpenCommand(appx_session.parseOption(urlString.substring(9)))],
                 handler: 'localos_exeoscmd_handler',
-                data: null
+                data: null,
+		authToken: localStorage.authToken
             };
             if (appxIsLocalReady()) {
                 localos_session.ws.send(JSON.stringify(ms));
@@ -306,6 +314,31 @@ function appxloadurlhandler(x) {
         }
         else if (urlString.indexOf("$beep:") > -1) {
             var a = $('<embed height="50" width="100" src="' + appxClientRoot + '/assets/beep.wav">').appendTo("body").hide();
+            setTimeout(function setTimeout() {
+                $(a).remove();
+            }, 1500);
+        }
+        else if (urlString.indexOf("$messagebeep:") > -1) {
+// Bug#4447 - no sound on errors, warnings
+            var a = $('<embed height="50" width="100" src="' + appxClientRoot + '/assets/message.wav">').appendTo("body").hide();
+            setTimeout(function setTimeout() {
+                $(a).remove();
+            }, 1500);
+        }
+        else if (urlString.indexOf("$warningbeep:") > -1) {
+            var a = $('<embed height="50" width="100" src="' + appxClientRoot + '/assets/warning.wav">').appendTo("body").hide();
+            setTimeout(function setTimeout() {
+                $(a).remove();
+            }, 1500);
+        }
+        else if (urlString.indexOf("$cancelbeep:") > -1) {
+            var a = $('<embed height="50" width="100" src="' + appxClientRoot + '/assets/cancel.wav">').appendTo("body").hide();
+            setTimeout(function setTimeout() {
+                $(a).remove();
+            }, 1500);
+        }
+        else if (urlString.indexOf("$errorbeep:") > -1) {
+            var a = $('<embed height="50" width="100" src="' + appxClientRoot + '/assets/error.wav">').appendTo("body").hide();
             setTimeout(function setTimeout() {
                 $(a).remove();
             }, 1500);
@@ -352,7 +385,8 @@ function appxloadurlhandler(x) {
             xhr.responseType = "arraybuffer";
             xhr.onload = function xhr_onload() {
                 blob = new Blob([xhr.response]);
-                var fileName = appx_session.getProp("dataCachePath") + fileId;
+                //var fileName = appx_session.getProp("dataCachePath") + fileId;
+                var fileName = fileId.replace("/","");
                 saveAs(blob, fileName);
             }
             xhr.send();
@@ -368,7 +402,8 @@ function appxloadurlhandler(x) {
                     cmd: 'execoscmd',
                     args: [buildOpenCommandDos(appx_session.parseOption(runString[1]))],
                     handler: 'localos_exeoscmd_handler',
-                    data: null
+                    data: null,
+		    authToken: localStorage.authToken
                 };
                 if (appxIsLocalReady()) {
                     localos_session.ws.send(JSON.stringify(ms));
@@ -526,7 +561,8 @@ function appxreceivefilehandler(x) {
                     httpPath: appxConnectorPathHttp,
                     protocol: appxProtocol,
                     handler: 'localopenfile',
-                    data: null
+                    data: null,
+		    authToken: localStorage.authToken
                 };
                 localos_session.ws.send(JSON.stringify(ms));
             }
@@ -644,7 +680,8 @@ function CreateFile(file) {
         cmd: 'createfile',
         args: [file],
         handler: 'localfilecreate',
-        data: null
+        data: null,
+	authToken: localStorage.authToken
     };
     localos_session.ws.send(JSON.stringify(ms));
 }
@@ -660,7 +697,8 @@ function AppendFile(data) {
             cmd: 'appendfile',
             args: [filecopy],
             handler: 'localfileappend',
-            data: null
+            data: null,
+	    authToken: localStorage.authToken
         };
         localos_session.ws.send(JSON.stringify(ms));
     }
@@ -767,3 +805,17 @@ function createClipboardDialog(booleanClipboardSet, textToCopyToClipboard) {
 }
 
 function localos_append_file_handler(data) { }
+
+/*
+** set the ca for local connector
+** ca : ca file object */
+function localConnectorUpdateCertificate(ca){
+    var ms = {
+        cmd: 'getCertificate',
+        args: [0],
+        handler: 'getCertificate',
+        data: ca,
+	authToken: localStorage.authToken
+    };
+    localos_session.ws.send(JSON.stringify(ms));
+}

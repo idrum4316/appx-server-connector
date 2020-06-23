@@ -1,4 +1,4 @@
-﻿
+
 /*********************************************************************
  **
  **   server/appx-client-token.js - Client Token processing
@@ -7,7 +7,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-token.js,v 1.22 2017/01/03 18:38:38 jnelson Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-token.js,v 1.23 2019/05/13 13:01:20 pete Exp $";
 
 var tokencachepending = 0;
 

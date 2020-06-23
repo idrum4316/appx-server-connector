@@ -1,5 +1,7 @@
 [Unit]
 Description={{description}}
+Wants={{wants}}
+After={{after}}
 
 [Service]
 KillMode=process

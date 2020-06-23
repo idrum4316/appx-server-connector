@@ -1,4 +1,4 @@
-﻿/*********************************************************************
+/*********************************************************************
  **
  **   server/appx-client-main.js - Client main logic processing
  **
@@ -7,7 +7,7 @@
  *********************************************************************/
 
 "use strict";
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-main.js,v 1.50 2019/01/03 01:07:07 pete Exp $";
+// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-main.js,v 1.51 2019/05/13 13:01:20 pete Exp $";
 $("#btn_appx_login").click(function () {
     start_session();
 });
