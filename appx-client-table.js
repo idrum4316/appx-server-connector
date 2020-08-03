@@ -330,6 +330,12 @@ var AppxTable = /** @class */ (function () {
             appxTable._tableData.colMap = [];
             for (var j = 0; j < appxTable._tableData.colModel.length; j++) {
                 appxTable._tableData.colMap.push(j);
+                //also intercept colModel formatter="checkbox" and set it to custom fromatter
+                // we cannot do this in appxConnector because checkboxFormatter and checkboxUnFormatter are not valid there
+                if (appxTable._tableData.colModel[j].formatter == "checkbox") {
+                    appxTable._tableData.colModel[j].formatter = AppxTable.checkboxFormatter;
+                    appxTable._tableData.colModel[j].unformat = AppxTable.checkboxUnFormatter;
+                }
             }
             appxTable._tableID = tableID;
             if (!appxTable._pulledFromSrv) {
@@ -416,6 +422,9 @@ var AppxTable = /** @class */ (function () {
                 appxTable._adjustGridIconColors();
                 if (newPrefs !== "{}" && newPrefs != null) {
                     appxTable._prefsData = JSON.parse(newPrefs);
+                    if (appxTable._prefsData.colModel) {
+                        AppxTable.updateColModelFormatter(appxTable._prefsData.colModel, appxTable);
+                    }
                 }
             }
             appxTable._prefsDataReceived = true;
@@ -436,6 +445,13 @@ var AppxTable = /** @class */ (function () {
         else {
             $("#" + appxTable._optionElemId).addClass("jqgrid-options-highlight");
             $("#table-save").addClass("jqgrid-options-highlight");
+        }
+        /*highlight search icon*/
+        if (appxTable._prefsData && appxTable._prefsData.filters && appxTable._prefsData.filters !== "") {
+            $("#search_" + appxTable._gridElemId).addClass("jqgrid-options-highlight");
+        }
+        else {
+            $("#search_" + appxTable._gridElemId).removeClass("jqgrid-options-highlight");
         }
     };
     AppxTable.prototype._pushTablePref = function () {
@@ -528,6 +544,8 @@ var AppxTable = /** @class */ (function () {
                     col.editoption = colModel[i].editoption;
                 if (colModel[i].formatter)
                     col.formatter = colModel[i].formatter;
+                if (colModel[i].key && colModel[i].key == true)
+                    col.key = true;
                 //add the new col data to new ColModel object
                 newColModel.push(col);
             } //end for
@@ -662,7 +680,7 @@ var AppxTable = /** @class */ (function () {
         var table = $("#" + appxTable._gridElemId);
         var postData = table.getGridParam("postData");
         // Make sure out colModel is current in postData
-        postData.colModel = table.getGridParam("colModel");
+        //postData.colModel = table.getGridParam("colModel"); //getRangeKeys doesn't need colModel
         // If we have filters we have to tell the server to use them
         if (postData.filters !== undefined && postData.filters.length > 0) {
             postData["_search"] = "true";
@@ -710,7 +728,7 @@ var AppxTable = /** @class */ (function () {
                 "search": false,
                 "caseSort": appxTable._widgetData.tableCaseSort
             };
-            if (appxTable._prefsData.filters) {
+            if (appxTable._prefsData.filters && appxTable._prefsData.filters !== "") {
                 postData.filters = appxTable._prefsData.filters;
                 postData.search = true;
             }
@@ -990,7 +1008,7 @@ var AppxTable = /** @class */ (function () {
         gridConfig.sortorder = (appxTable._prefsData.lastSortOrder || ["asc"]).slice(-1)[0];
         gridConfig.rownumbers = appxTable._widgetData.tableShowRowNumbers;
         gridConfig.postData = appxTable._getPostData();
-        gridConfig.search = gridConfig.postData && gridConfig.postData.filters ? true : false;
+        gridConfig.search = gridConfig.postData && gridConfig.postData.filters && gridConfig.postData.filters.length > 0 ? true : false;
         gridConfig.rownumWidth = rowNumWidthPx;
         gridConfig.rowNum = appxTable._prefsData.rowsPerPage || 50;
         gridConfig.url = AppxTable._getAppxSession().appxDataCacheUrl;
@@ -1036,7 +1054,7 @@ var AppxTable = /** @class */ (function () {
         // Update the grid filters from cache
         var postData = gridElem.jqGrid("getGridParam", "postData");
         if (postData) {
-            if (appxTable._prefsData.filters) {
+            if (appxTable._prefsData.filters && appxTable._prefsData.filters.length > 0) {
                 postData.search = true;
                 postData.filters = appxTable._prefsData.filters;
             }
@@ -1103,6 +1121,10 @@ var AppxTable = /** @class */ (function () {
             if (header != null) {
                 header.style.display = "none";
             }
+        }
+        // if table widget set to be disabled, ignore all clicks but still allow sort and resize and ...
+        if (this._widgetData.wEnabled == false) {
+            $("#" + this._gridElemId).addClass("jqgrid-disabled-widget");
         }
         // If we are contained in an Appx window that is not the active Appx process window we want to freeze the table
         if ($("#newtablewidget_" + id).closest(".appxbox").hasClass("appx-not-modifiable")) {
@@ -1279,6 +1301,8 @@ var AppxTable = /** @class */ (function () {
         // Fix the font and line height to use parent container specs
         var fontSize = $('#' + appxTable._appxElemId).css('font-size');
         var lineHeight = $('#' + appxTable._appxElemId).css('line-height');
+        /*highlight the footer buttons "Sreach" specifically*/
+        appxTable._adjustGridIconColors();
         /**
          * Exclude the divs that we manually changed their font-size. We might have set those based on widgets.
          * They should have class name of "appx-fontsize-adjusted"
@@ -1673,6 +1697,49 @@ var AppxTable = /** @class */ (function () {
             }
         }
         return col;
+    };
+    /* Custome cell formatter for checkboxes*/
+    AppxTable.checkboxFormatter = function checkboxFormatter(cellvalue, options, rowObject) {
+        var new_formated_cellvalue = "<label class='checkbox-label' onclick='return false;' style='width:unset; top:unset; left:unset; padding-right:8px; margin-right:4px;'>";
+        new_formated_cellvalue += "<input type='checkbox' disabled=true value='";
+        new_formated_cellvalue += cellvalue;
+        new_formated_cellvalue += "'";
+        if (cellvalue == 'Y' || cellvalue == 'y' || cellvalue == 1) {
+            new_formated_cellvalue += " checked='checked'";
+        }
+        new_formated_cellvalue += "/><span class='checkbox-custom rectangular' style='top:unset; left:unset;'></span></label>";
+        return new_formated_cellvalue;
+    };
+    /*to unformat the checkbox formatted value (unformatter)*/
+    AppxTable.checkboxUnFormatter = function checkboxUnFormatter(cellvalue, options, cell) {
+        return $('input[type=checkbox]', cell).val();
+    };
+    /*to set formatter that has been missing during user pref save and retrival*/
+    AppxTable.updateColModelFormatter = function (colModel, appxTable) {
+        var originalColModel = appxTable._tableData.colModel;
+        for (var i = 0; i < colModel.length; i++) {
+            if (colModel[i].formatter) {
+                /*to customize checkboxes we need to use a custome formatter. we cannot do this in appxConnector because checkboxFormatter and checkboxUnFormatter are not valid there*/
+                if (colModel[i].formatter = "checkbox") {
+                    colModel[i].formatter = AppxTable.checkboxFormatter;
+                    colModel[i].unformat = AppxTable.checkboxUnFormatter;
+                }
+            }
+            /*
+            ** formatter can be an object. In that case we cannot save it as table pref (STRINGIFY Fails). So, if formatter does not exist
+            ** get the formatter value from the tableData object
+            */
+            else {
+                /*find the colModel in the original colModel and use its formatter*/
+                for (var j = 0; j < originalColModel.length; j++) {
+                    if (originalColModel[j].name == colModel[i].name) {
+                        colModel[i].formatter = originalColModel[j].formatter;
+                        colModel[i].unformat = originalColModel[j].unformat;
+                        break;
+                    }
+                }
+            }
+        }
     };
     return AppxTable;
 }());

@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-screen.js,v 1.485 2020/03/18 20:00:22 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 "use strict";
 var screenflipped = false;
@@ -297,7 +297,8 @@ function appxApplyStylesSignature() {
 }
 
 function appxApplyStylesTitleButtons() {
-    $.each($("#screenBuf .appx-title-button-help"), function $_each(k, el0) {
+    /*add click event to all help buttons on the screen and toolbar*/
+    $.each($("#screenBuf .appx-title-button-help, #appx-toolbar .appx-title-button-help"), function $_each(k, el0) {
         if( $(el0).parents(".appx-active-box").length === 0 ) {
             $(el0).prop("disabled",true);
         }
@@ -347,7 +348,8 @@ function appxApplyStylesTitleButtons() {
 function appxApplyStylesCheckbox() {
     try {
         var browser = checkBrowser();
-        $.each($("input[type=checkbox]"), function $_each(k, el0) {
+        $.each($(".checkbox-label input[type=checkbox]"), function $_each(k, el0) {
+            var parent = $(el0).parent();
             if ($(el0).attr('disabled')) {
                 if (browser == "Edge" || browser == "IE") {
                     // Do nothing for these browsers, their disabled checkboxes look ok.
@@ -355,6 +357,16 @@ function appxApplyStylesCheckbox() {
                 else {
                     $(el0).addClass('disabled')
                         .removeAttr('disabled')
+                        .keypress(function $_keypress(event) {
+                            event.preventDefault();
+                        })
+                        .click(function $_click(event) {
+                            event.preventDefault();
+                        });
+                }
+                /*Bug #4690 disable click on custom checkbox-label as well*/
+                if($(el0).parent().hasClass("checkbox-label")){
+                    $(el0).parent()
                         .keypress(function $_keypress(event) {
                             event.preventDefault();
                         })
@@ -382,33 +394,17 @@ function appxApplyStylesCheckbox() {
                         el.val("N");
                         break;
                     default:
-                        el.data('checked', 2);
+                        el.data('checked', 1);
                         el.prop('indeterminate', true);
                         el.prop('checked', false);
                         el.val(" ");
                 }
 
-                $(el0).data('checked', $(el0).checked)
-                    .keypress(function $_keypress(event) {
-                        var el = $(this);
-                        if (event.keyCode == 110 || event.keyCode == 78) { // n or N
-                            el.data('checked', 0);
-                            el.prop('indeterminate', false);
-                            el.prop('checked', false);
-                            el.val("N");
-                            el.addClass("dirty");
-                        }
-                        else if (event.keyCode == 121 || event.keyCode == 89) { // y or Y
-                            el.data('checked', 2);
-                            el.prop('indeterminate', false);
-                            el.prop('checked', true);
-                            el.val("Y");
-                            el.addClass("dirty");
-                        }
-                    })
+                $(el0).data('checked', $(el0).checked)      
                     .click(function $_click(e) {
                         var el = $(this);
-                        if (el.data('checked') == 0 && el.hasClass('appx-nullok') == false) {
+                        var parent = $(this).parent();
+                        if (el.data('checked') == 0 && parent.hasClass('appx-nullok') == false) {
                             el.data('checked', 1);
                         }
                         switch (el.data('checked')) {
@@ -417,7 +413,7 @@ function appxApplyStylesCheckbox() {
                                 el.data('checked', 1);
                                 el.prop('indeterminate', true);
                                 el.val(" ");
-                                el.addClass("dirty");
+                               // el.addClass("dirty");
                                 el.change();
                                 break;
                             // indeterminate, going checked
@@ -426,7 +422,7 @@ function appxApplyStylesCheckbox() {
                                 el.prop('indeterminate', false);
                                 el.prop('checked', true);
                                 el.val("Y");
-                                el.addClass("dirty");
+                                //el.addClass("dirty");
                                 break;
                             // checked, going unchecked
                             default:
@@ -434,9 +430,43 @@ function appxApplyStylesCheckbox() {
                                 el.prop('indeterminate', false);
                                 el.prop('checked', false);
                                 el.val("N");
-                                el.addClass("dirty");
+                                //el.addClass("dirty");
                         }
+                        /*maintain the value in parent - to keep checkboxes the same style*/
+                        parent.data('checked', el.data('checked'));
+                        parent.prop('indeterminate', el.prop('indeterminate'));
+                        parent.prop('checked', el.prop('checked'));
+                        parent.val(el.val());
+                        parent.addClass("dirty");
+                        if(el.prop('indeterminate') == true)
+                            el.change();
                     });
+                /*specify the keypress even on parent so it could be triggered id parent label is on focuse*/
+                parent.keypress(function $_keypress(event) {
+                    var el = $(this).children("input[type=checkbox]");
+                    var originalValue = el.val();
+                    var parent = $(this);
+                    if (event.keyCode == 110 || event.keyCode == 78) { // n or N
+                        el.data('checked', 0);
+                        el.prop('indeterminate', false);
+                        el.prop('checked', false);
+                        el.val("N");
+                    }
+                    else if (event.keyCode == 121 || event.keyCode == 89) { // y or Y
+                        el.data('checked', 2);
+                        el.prop('indeterminate', false);
+                        el.prop('checked', true);
+                        el.val("Y");
+                    }
+                    /*maintain the value in parent - to keep checkboxes the same style*/
+                    parent.data('checked', el.data('checked'));
+                    parent.prop('indeterminate', el.prop('indeterminate'));
+                    parent.prop('checked', el.prop('checked'));
+                    parent.val(el.val());
+                    parent.addClass("dirty");
+                    if(el.val() !== originalValue)
+                        el.change();
+                });
             }
         });
     }
@@ -768,6 +798,8 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                     var editor = CKEDITOR.replace($elementClone.attr("id"), config);
                     $elementClone.attr("name", editor.name);
                     editor.on('instanceReady', function editor_onInstanceReady() {
+                        // Bug #4728: Move data from the Main Editor to the popup editor
+                        this.setData(mainEditor.getData());
                         $("#cke_" + $elementClone.attr("id")).find("iframe").attr("title", "");
                         $("#cke_" + $elementClone.attr("id")).css({
                             "position": "absolute",
@@ -1851,14 +1883,21 @@ function appxshowcursor(bFocus) {
                         if (appx_session.keyLeft) {
                             pc = 1;
                         }
-
                         /*Set position row & column to adjust for being inside box instead
                         **of statically positioned on main screen*/
-                       /*Note: Position adjustment seems to be not needed
-                        #BUG: 4565 */ 
                         var modPos = {
-                            row: pos.row /*- box.begin_row + 1*/,
-                            col: pos.col /*- box.begin_column + 1*/
+                            row: pos.row - box.begin_row + 1,
+                            col: pos.col - box.begin_column + 1
+                        };
+                       /*Note: Position adjustment seems to be not needed for scrolling screens?
+                               Do this only when we navigate through the items in a record not when
+                               we are changing the selected row
+                        #BUG: 4565 */ 
+                        if(appxIsScrollReg(box) && appxIsScrollAct(box)){
+                            modPos = {
+                                row: pos.row,
+                                col: pos.col
+                            }
                         }
 
                         if (
@@ -3328,7 +3367,7 @@ function sendappxshow(option, data) {
                 if ($(data[dl]).css("text-transform") == "uppercase") {
                     dataval = dataval.toUpperCase();
                 }
-
+                /*FIXME:What if the field is unicode?*/
                 dataval = dataval.replace("\u2018", "'");
                 dataval = dataval.replace("\u2019", "'");
                 dataval = dataval.replace("\u201C", '"');
@@ -3352,12 +3391,22 @@ function sendappxshow(option, data) {
                     msgdata.push(datacol);
                 }
                 var u8strarray = toUTF8Array(dataval);
-                var byte2 = u8strarray.length % 256;
-                var byte1 = (u8strarray.length - byte2) / 256;
-                msgdata.push(byte1);
-                msgdata.push(byte2);
-                Array.prototype.push.apply(msgdata, u8strarray);
-            }
+                /*Since release 6.1 (unicode) we send the data length as 4 bytes so we can send large field lengths*/
+                if((appx_session.server_extended_feature_mask & TMNET_FEATURE2_LARGE_WORK_FIELD) == TMNET_FEATURE2_LARGE_WORK_FIELD){
+                    Array.prototype.push.apply(msgdata, hton32(u8strarray.length));
+                }
+                else{
+                    var byte2 = u8strarray.length % 256;
+                    var byte1 = (u8strarray.length - byte2) / 256;
+                    msgdata.push(byte1);
+                    msgdata.push(byte2);
+                }
+                //This cases range error on large data. So, got replaced by a for loop
+                //Array.prototype.push.apply(msgdata, u8strarray);
+                for(i=0;i<u8strarray.length;i++){
+                    msgdata.push(u8strarray[i]);
+                }
+            }//end for
 
             clearClientIds();
             /*If we came into this to build a drop object then we send the engine
@@ -3828,8 +3877,9 @@ function appxPutCursor(c, r) {
                 bCurItem = appxshowcursor(false); //don't call focus
             }
         }
-        else{
-            /*wait a little to see if locks gets created*/
+       /* This fix was for bug #4560 but it caused bug #4712. For now remove it
+       else{
+            //wait a little to see if locks gets created
             setTimeout(function(){
                 if (!appxIsLocked() ) {
                     var cur = appxGetCursorPos(); //prevent recursive call through focus
@@ -3840,7 +3890,7 @@ function appxPutCursor(c, r) {
                     }
                 }
             },100);
-        }
+        }*/
         return bCurItem;
     }
     catch (ex) {
@@ -3958,18 +4008,45 @@ function appxClearStatusMsgText() {
     $("#appx-status-msg").css("background-color", "white");
 }
 
-function appxSetStatusText(str) {
+/*
+** This fuction shows messages in status bar
+**      Str: is the message
+**      severity: Type of message
+**            valid values:  {
+**                                0 : Info
+**                                1 : Warning
+**                                2 : Error
+**                                3 : Cancel
+**                            }
+*/
+function appxSetStatusText(str, severity) {
     str = str.trim();
-    var $bar = $("#appx-status-msg");
-    if ($bar.length > 0) {
-        var clr = (str == "" ? "white" : "lime");
-        if (str != "") {
-            if (str.indexOf("Error - ") != -1) clr = "red";
-            else if (str.indexOf("Warning - ") != -1) clr = "yellow";
+    var $statusbar = $("#appx-status-msg");
+    var $msghtml = $("<span>").html(str);
+    $msghtml.addClass("status-msg");
+    switch (severity) {
+        case 0:
+            $msghtml.addClass("status-msg-info");
+            appxloadurlhandler( {'data':'$messagebeep:'});   // Bug#4447 - no sound on errors, warnings
+            break;
+        case 1:
+            $msghtml.addClass("status-msg-warning");
+            appxloadurlhandler( {'data':'$warningbeep:'});   // Bug#4447 - no sound on errors, warnings
+            break;
+        case 2:
+            $msghtml.addClass("status-msg-error");
+            appxloadurlhandler( {'data':'$errorbeep:'});     // Bug#4447 - no sound on errors, warnings
+            break;
+        case 3:
+            $msghtml.addClass("status-msg-cancel");
+            appxloadurlhandler( {'data':'$cancelbeep:'});    // Bug#4447 - no sound on errors, warnings
+            break;
+    }
+    if (str != undefined && str != "") {
+        if($statusbar.text().length > 0){
+            $statusbar.append("<br/>");
         }
-        if (str != "") {
-            $bar.prepend(str + "\n\n");
-        }
+        $statusbar.append($msghtml);
     }
 }
 

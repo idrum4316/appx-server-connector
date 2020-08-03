@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-keys.js,v 1.75 2020/01/15 15:35:44 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 //keep menu open
 var stick = false;
@@ -845,6 +845,8 @@ var TMNET_FEATURE2_NO_SCREEN_DATA         = 0x00000010;
 var TMNET_FEATURE2_SEND_ALL_ITEMS         = 0x00000020;
 var TMNET_FEATURE2_HTML5_VERSION_1        = 0x00000040;
 var TMNET_FEATURE2_PUSH_AND_OPEN          = 0x00000080; 
-var TMNET_FEATURE2_UNICODE_ENGINE         = 0x00000100;
 */
+var TMNET_FEATURE2_UNICODE_ENGINE         = 0x00000100;
 var TMNET_FEATURE2_CUSTOMIZABLE_TABLE_HEADERS = 0x00000200;
+var TMNET_FEATURE2_APPX64_BIT             = 0X00001000;
+var TMNET_FEATURE2_LARGE_WORK_FIELD       = 0x00002000;

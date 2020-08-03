@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-localos.js,v 1.99 2020/03/18 15:52:30 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 function appxIsLocalReady() {
     return (localos_session && localos_session.ws.readyState == 1)
 }
@@ -409,7 +409,9 @@ function appxloadurlhandler(x) {
                     localos_session.ws.send(JSON.stringify(ms));
                 }
                 else {
-                    if (urlString.indexOf("http") < 0) {
+                    /* since we cannot run os commands without local connector, assume that the command is a 
+                    ** url. If it doesn't start with xxx:// add http:// so it gets treated as a url */
+                    if (urlString.indexOf("://") < 0) {
                         urlString = "http://" + urlString;
                     }
                     window.open(urlString, "_blank", "toolbar=yes, scrollbars=yes, resizable=yes, location=yes, menubar=yes, status=yes, titlebar=yes, channelmode=yes, top=50, left=50, width=" + $(window).width() * .8 + ", height=" + $(window).height() * .8 + "");

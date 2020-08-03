@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-resource.js,v 1.59 2019/07/23 18:50:47 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 //RESOURCE Message Handler
 //Injects an Image into the DOM with an Object URL

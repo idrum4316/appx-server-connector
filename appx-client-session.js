@@ -7,7 +7,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-session.js,v 1.86 2019/12/18 14:52:22 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 "use strict";
 //this function can be bound to a login's screen's button click event to handle logging into the appx server
@@ -285,6 +285,13 @@ function sendappxfeatures(data) {
 //Sends feature data to the server
 function sendappxextendedfeatures(data) {
     appx_session.server_extended_feature_mask = data.data;
+    /*is the appx engine 64-bit*/
+    if(appx_session.server_extended_feature_mask & TMNET_FEATURE2_APPX64_BIT){
+        appx_session._APPX64 = true;
+    }
+    else{
+        appx_session._APPX64 = false;
+    }
     var ms = {
         cmd: 'appxmessage',
         args: appx_session.extended_feature_mask, //minimum

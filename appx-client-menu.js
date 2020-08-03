@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-menu.js,v 1.92 2018/09/20 03:36:32 jnelson Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 var menugroups = [];
 var menulabels = [];
@@ -643,9 +643,12 @@ function createToolbarMenu() {
             if (mx.widget.wColorBg !== null) {
                 $(item).css("background-color", mx.widget.wColorBg);
             }
-
-            $(item).attr("id", addClientId(mx.widget.wCommand, mx.widget.wClientId));
-
+            if (mx.widget.wCommand != null && mx.widget.wCommand === OPT_WHATS_THIS) {
+                $(item).addClass("appx-title-button-help");
+            }
+            else{
+                $(item).attr("id", addClientId(mx.widget.wCommand, mx.widget.wClientId));
+            }
             if (mx.widget.wTooltip) {
                 $(item).prop('title', mx.widget.wTooltip);
                 $(item).tooltip({
@@ -673,14 +676,20 @@ function createToolbarMenu() {
                     console.log("Creating delete");
                 }
                 var ic = $(item).clone();
-                $(ic).attr("id", addClientId("sk_" + mx.widget.wCommand, mx.widget.wClientId));
+                if (mx.widget.wCommand != null && mx.widget.wCommand === OPT_WHATS_THIS) {
+                    $(item).addClass("appx-title-button-help");
+                }
+                else{
+                    $(ic).attr("id", addClientId("sk_" + mx.widget.wCommand, mx.widget.wClientId));
+                    $(ic).click(function $_clickCallback() {
+                        var i = getClientId(this.id).replace("sk_", "");
+                        appxwidgetcallback(i);
+                    });
+                }
                 $(ic).css({
                     "background-color": "transparent"
                 });
-                $(ic).click(function $_clickCallback() {
-                    var i = getClientId(this.id).replace("sk_", "");
-                    appxwidgetcallback(i);
-                });
+                
                 toolbarItems.over255.push(ic);
             }
             else {

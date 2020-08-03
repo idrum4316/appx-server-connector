@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-item.js,v 1.175 2019/07/30 00:55:32 jselvage Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 "use strict";
 //find the smallest container for an item
@@ -57,6 +57,23 @@ function appxcreateformatitem(item, el) {
 
     return $itemhtml;
 }
+/**
+ * converts logic value (0/1/y/n) to alpha value (Y/N)
+ * @param {*} logic_value
+ */
+function appxLogicToAlpha(logic){
+    /*Sanatize the value of checkbox*/
+    //Note: appx6 sends 4 characters ("Y   ") as the value, so we need to only check the first character until that gets resolved
+    if(logic.charAt(0) == "y" || logic.charAt(0) == "Y" || logic.charAt(0) == "1"){
+        return "Y";
+    }
+    else if(logic.charAt(0) == "n" || logic.charAt(0) == "N" || logic.charAt(0) == "0"){
+        return "N";
+    }
+    else{
+        return "";
+    }
+}
 
 //Items Message Handler
 function appxitemshandler(x) {
@@ -80,7 +97,7 @@ function appxitemshandler(x) {
             //console.log("item row=%d, col=%d special=%d wt=%d label=%s",item.pos_row,item.pos_col,item.special,(item.widget == null ? -1 : item.widget.wWidgetType),item.data);
             item.uline = appxIsUline(item);
             appxSetModifiableCapable(item, false);
-            item.maxLen = item.size_rows * item.size_cols;
+            
             switch (item.type) {
                 case ELEM_ALP_CONTIG:
                 case ELEM_ALP_NON_CONTIG:
@@ -90,7 +107,12 @@ function appxitemshandler(x) {
                     var hiInt = item.digits_left;
                     if (loInt < 0) loInt += 256;
                     if (hiInt < 0) hiInt += 256;
-                    item.maxLen = ((hiInt * 256) + loInt);
+                    /**
+                     * From release 6.1 we send maxLen from the engine as a 4 byte integer to support large fields
+                     * So, if we already have value in maxLen, don't assign it based on hi and lo values
+                     */
+                    if(item.maxLen == undefined || item.maxLen <= 0)
+                        item.maxLen = ((hiInt * 256) + loInt);
                     break;
                 //date field fix
                 case ELEM_ALP_JUL_DATE:
@@ -100,10 +122,22 @@ function appxitemshandler(x) {
                 case ELEM_PD_JUL_DATE:
                 case ELEM_PD_GREG_DATE:
                 case ELEM_UNIVERSAL_DATE:
+                    /**
+                     * From release 6.1 we send maxLen from the engine as a 4 byte integer to support large fields
+                     * So, if we already have value in maxLen, don't override it
+                     */
+                    if(item.maxLen == undefined || item.maxLen <= 0)
+                        item.maxLen = item.size_rows * item.size_cols;
                     if (!longdata) longdata = parseItemLongData(item.rawdata);
                     item.data = longdata.itemdata[0][0];
                     break;
                 default:
+                    /**
+                     * From release 6.1 we send maxLen from the engine as a 4 byte integer to support large fields
+                     * So, if we already have value in maxLen, don't override it
+                     */
+                    if(item.maxLen == undefined || item.maxLen <= 0)
+                        item.maxLen = item.size_rows * item.size_cols;
                     break;
             }
 
@@ -121,9 +155,6 @@ function appxitemshandler(x) {
             }
 
             if (appxIsModifiable(item) == false && appxIsModifiableCapable(item) == false && appxIsStatus(item) == false && wt == null) {
-                if (item.type == ELEM_LOG && wt != WIDGET_TYPE_CHECK_BOX) {
-                    item.data = item.data == "1" ? "Y" : item.data == "0" ? "N" : "";
-                }
                 var rowtxt = new RowTextStruct();
                 rowtxt.type = ROWTEXT_TYPE_ITEM;
                 rowtxt.uline = item.uline;
@@ -291,7 +322,7 @@ function appxitemshandler(x) {
                         }
                         else {
                             if (item.type == ELEM_LOG) {
-                                item.data = item.data == "1" ? "Y" : item.data == "0" ? "N" : "";
+                                item.data = appxLogicToAlpha(item.data);
                             }
                             $itemhtml.html(item.data);
                         }
@@ -352,7 +383,7 @@ function appxitemshandler(x) {
                 logca("item focus: " + ida[1] + "." + ida[2]);
                 appxPutCursor(ida[1], ida[2]);
 
-                if (appx_session.lastOption && ( appx_session.lastOption === "333" || appx_session.lastOption === 333 ) && !$(this).is("input[type=checkbox]")) {
+                if (appx_session.lastOption && ( appx_session.lastOption === "333" || appx_session.lastOption === 333 ) && !($(this).is("input[type=checkbox]") || $(this).is(".checkbox-label")) ) {
                    this.selectionStart = this.selectionEnd = appx_session.keyPauseLastPosition;
                 } else {
                     if (appx_session.getProp("autoSelect")) {

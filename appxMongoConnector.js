@@ -1,7 +1,7 @@
 "use strict";
 
-var mongoConnectorVersionStr = "6.0.0.20040817";
-var mongoConnectorVersionNum = 60000.20040817;
+var mongoConnectorVersionStr = "6.0.0.20072712";
+var mongoConnectorVersionNum = 60000.20072712;
 
 const cluster = require('cluster');
 const os = require('os');

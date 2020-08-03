@@ -539,11 +539,23 @@ function clearAndReset() {
 
     for (name in CKEDITOR.instances) {
         $(".ui-tooltip").remove();
-        $("textarea").val("");
+
+        //This clears all textareas on the screen not just the html editor's. Replaced by the following line
+        //$("textarea").val("");
+        var textAreaElem;
+        if(CKEDITOR.instances[name].element){
+            textAreaElem= CKEDITOR.instances[name].element.$;
+            textAreaElem.value = "";
+        }
+       
         if (name.indexOf("stale") === -1 && CKEDITOR.instances[name].status !== "unloaded") {
             CKEDITOR.instances[name].destroy(true);
         }
-        $("textarea").hide();
+        //This should only apply to ckeditors text areas
+        //$("textarea").hide();
+        if(textAreaElem){
+            textAreaElem.style.display = "none";
+        }
     }
 }
 

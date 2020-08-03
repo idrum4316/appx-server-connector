@@ -7,14 +7,14 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-options.js,v 1.114 2019/12/18 16:01:32 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 // FIXME:  need a way to save to disk and reload if user deletes Browser cache
 // thinking maybe allow to download and save a backup, and a way to upload and
 // set options from a backup
 
-var appxServerClientVersionStr = "6.0.0.20040817";
-var appxServerClientVersionNum = 60000.20040817;
+var appxServerClientVersionStr = "6.0.0.20072712";
+var appxServerClientVersionNum = 60000.20072712;
 
 var appxSortedOptions = {};
 var appxSortedOptionsArray = [];

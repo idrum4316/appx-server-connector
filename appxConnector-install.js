@@ -20,8 +20,8 @@ connectors.
 ###############################################################################
 */
 
-var serverConnectorInstallVersionStr = "6.0.0.20040817";
-var serverConnectorInstallVersionNum = 60000.20040817;
+var serverConnectorInstallVersionStr = "6.0.0.20072712";
+var serverConnectorInstallVersionNum = 60000.20072712;
 
 var args = process.argv.slice(2);
 var exec = require('child_process').execSync;

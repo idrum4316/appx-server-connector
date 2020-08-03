@@ -20,8 +20,8 @@ connectors.
 ###############################################################################
 */
 
-var serverConnectorUnInstallVersionStr = "6.0.0.20040817";
-var serverConnectorUnInstallVersionNum = 60000.20040817;
+var serverConnectorUnInstallVersionStr = "6.0.0.20072712";
+var serverConnectorUnInstallVersionNum = 60000.20072712;
 
 var Service
 var platform

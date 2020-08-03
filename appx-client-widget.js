@@ -6,7 +6,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-widget.js,v 1.463 2020/02/18 21:02:12 m.karimi Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 //Need to Remove the default styles and set CUSTOM.css - !!!
 
@@ -101,6 +101,18 @@ function appxwidgetcallback(option) {
     }
 
     logca("appxwidgetcallback: " + option);
+
+    //check if the html editors didn't go over the max character limit
+    for (var editor in CKEDITOR.instances) {
+        var $cke = $("#cke_" + editor);
+        var maxLength = $("#" + editor).attr("maxLength");
+        if(CKEDITOR.instances[editor].getData().length > maxLength){
+            //show error message
+            appxSetStatusText("Error - Html Editor has more characters than the maximum allowed characters", 2);
+            return;
+        }
+        
+    }
 
     for (var editor in CKEDITOR.instances) {
         var $cke = $("#cke_" + editor);
@@ -2573,7 +2585,9 @@ Widget.prototype.parseData = function Widget_prototype_parseData() { //CreateFro
                         }
                         break;
                     case "SPCB":
-                        this.wPcbId = parseInt(val);
+                        /*Keep the pcbId as string so we don't lose precision when we convert to number in js*/ 
+                        /*this.wPcbId = parseInt(val);*/
+                        this.wPcbId = val;
                         break;
                     case "SPT":
                         this.wPaintTicks = (val != 'F');
@@ -3051,23 +3065,78 @@ function createWidgetTagObject() {
         return $tag;
     }
     appx_session.createWidgetTag[WIDGET_TYPE_CHECK_BOX] = function widget_checkbox(widget, $tag, item) {
-// if checked and non-modifiable, then synthesize a checkbox to distinguish it from modifiable checkboxes per Bug #4438
-        if (item.data == "1" && !appxIsModifiable( item ) ) {
-            $tag = $("<label class='checkbox-label' > <input type='checkbox' value='1' checked='checked' class='item_with_widget appxitem notranslate appxfield disabled' style='position: absolute; left: 296px; top: 3px; height: 21px; font-size: 13.36px; overflow: hidden; white-space: pre; z-index: 1990;' > <span class='checkbox-custom rectangular' ></span> </label>");
-        } else {
-            $tag = $("<input type='checkbox'>");
+        /* Bug #4415: Sanitize the value of checkbox*/
+        //Note: appx6 sends 4 characters ("Y   ") as the value, so we need to only check the first character until that gets resolved
+        if(item.data.charAt(0) == "y" || item.data.charAt(0) == "Y" || item.data.charAt(0) == "1"){
+            item.data = "1";
+        }
+        else if(item.data.charAt(0) == "n" || item.data.charAt(0) == "N" || item.data.charAt(0) == "0"){
+            item.data = "0";
+        }
+// We hide the actual checkbox and overlay it with a span element that looks like a checkbox so the checkbox style could be controlled across all browsers
+        if(!appxIsModifiable( item )){
+            var indeterminateCheckbox = false;
+            var $CheckboxTag;
+            var disabledCheckbox = "<input disabled='true' type='checkbox' ";
+            if (item.data == "0" ) {
+                disabledCheckbox += "value='0' ";
+            }
+            else if(item.data == "1"){
+                disabledCheckbox += "value='1' checked='checked' ";
+            }
+            else{
+                indeterminateCheckbox = true;
+            }
+            disabledCheckbox += "class='item_with_widget appxitem notranslate appxfield disabled' style='position: absolute; top: 3px; height: 10px; font-size: 13.36px; overflow: hidden; white-space: pre;' >";
+            var $CheckboxTag = $(disabledCheckbox);
+            if(indeterminateCheckbox == true){
+                $CheckboxTag.prop('indeterminate', true);
+            }
+            $tag = $("<label class='checkbox-label disabled' ></label>");
+            $tag.append($CheckboxTag);
+            $tag.append("<span class='checkbox-custom rectangular' ></span> ");
+        } 
+        else {
+            //$tag = $("<input type='checkbox'>");
+
+            var enabledCheckbox = "<input type='checkbox' ";
+            if (item.data == "0" ) {
+                enabledCheckbox += "value='0' ";
+            }
+            else if(item.data == "1"){
+                enabledCheckbox += "value='1' checked='checked' ";
+            }
+            else{
+                indeterminateCheckbox = true;
+            }
+            enabledCheckbox += "class='item_with_widget appxitem notranslate appxfield' style='position: absolute; top: 3px; height: 10px; font-size: 13.36px; overflow: hidden; white-space: pre;' >";
+            $CheckboxTag = $(enabledCheckbox);
+            if(indeterminateCheckbox == true){
+                $CheckboxTag.prop('indeterminate', true);
+            }
+            $tag = $("<label class='checkbox-label' ></label>");
+            $tag.append($CheckboxTag);
+            $tag.append("<span class='checkbox-custom rectangular' ></span> ");
+
         }
         if (item.data == "1") {
             $tag.prop("checked", true);
             $tag.data("checked", 2);
+            $CheckboxTag.prop("checked", true);
+            $CheckboxTag.data("checked", 2);
+
         }
         else if (item.data == "0") {
             $tag.prop("checked", false);
             $tag.data("checked", 0);
+            $CheckboxTag.prop("checked", false);
+            $CheckboxTag.data("checked", 0);
         }
         else {
             $tag.prop("indeterminate", true);
             $tag.data("checked", 1);
+            $CheckboxTag.prop("indeterminate", true);
+            $CheckboxTag.data("checked", 1);
         }
 
         $tag.val(item.data);
@@ -3246,7 +3315,7 @@ function createWidgetTagObject() {
             }
             appxSetModifiableCapable(item, true);
             if (item.type == ELEM_LOG) {
-                item.data = item.data == "1" ? "Y" : item.data == "0" ? "N" : "";
+                item.data = appxLogicToAlpha(item.data);
             }
 
             if (!appxIsMasked(item)) {

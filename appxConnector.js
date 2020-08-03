@@ -1,7 +1,7 @@
 "use strict";
 
-const serverConnectorVersionStr = "6.0.0.20040817";
-const serverConnectorVersionNum = 60000.20040817;
+const serverConnectorVersionStr = "6.0.0.20072712";
+const serverConnectorVersionNum = 60000.20072712;
 
 const cluster = require('cluster');
 const os = require('os');
@@ -31,6 +31,12 @@ const appxLocalConnectorCert= null;   							  // If local connector needs certi
 //  *********************************************************
 //  Configuration Section - End
 //  *********************************************************
+
+const TMNET_FEATURE2_APPX64_BIT = 0x00001000;
+const TMNET_FEATURE2_LARGE_WORK_FIELD = 0x00002000;
+const TMNET_FEATURE2_UNICODE_ENGINE = 0x00000100;
+
+const FLD_SPEC_TOKEN = 0x02;
 
 function dlog( msg, obj ) {
     if( appxdebug ) {
@@ -825,19 +831,32 @@ function createWebSocket() {
                                     sendMessage(ws, ms);
                                 }
                                 else {
-                                    var msg = Buffer.alloc(24);
-                                    msg.write(arg0Array[0].slice(0, 3), 0); // ap
-                                    msg.write(arg0Array[1].slice(0, 2), 3); // ver
-                                    msg.write(arg0Array[2].slice(0, 8), 5); // cacheid
-                                    msg.writeUInt8(parseInt("0x" + arg0Array[3].slice(0, 2)), 13); // state
-                                    msg.writeUInt16BE(parseInt("0x" + arg2Array[1].slice(0, 4)), 14); // id
-                                    msg.writeUInt32BE(parseInt("0x" + arg2Array[0].slice(0, 8)), 16); // ctx
-                                    msg.writeUInt8(parseInt("0x" + arg2Array[2].slice(0, 2)), 20); // type
-                                    msg.fill(0, 21); // filler
-
+                                    logactivity("sending getresource request 64-bit Engine="+ appxprocessor._APPX64);
+                                    if(appxprocessor._APPX64){
+                                        var msg = Buffer.alloc(32);
+                                        msg.write(arg0Array[0].slice(0, 3), 0); // ap
+                                        msg.write(arg0Array[1].slice(0, 2), 3); // ver
+                                        msg.write(arg0Array[2].slice(0, 8), 5); // cacheid
+                                        msg.writeUInt8(parseInt("0x" + arg0Array[3].slice(0, 2)), 13); // state
+                                        msg.writeUInt16BE(parseInt("0x" + arg2Array[1].slice(0, 4)), 14); // id
+                                        msg.writeBigUInt64BE(BigInt("0x" + arg2Array[0].slice(0, 16)), 16); // ctx
+                                        msg.writeUInt8(parseInt("0x" + arg2Array[2].slice(0, 2)), 24); // type
+                                        msg.fill(0, 25); // filler
+                                    }
+                                    else{
+                                        var msg = Buffer.alloc(24);
+                                        msg.write(arg0Array[0].slice(0, 3), 0); // ap
+                                        msg.write(arg0Array[1].slice(0, 2), 3); // ver
+                                        msg.write(arg0Array[2].slice(0, 8), 5); // cacheid
+                                        msg.writeUInt8(parseInt("0x" + arg0Array[3].slice(0, 2)), 13); // state
+                                        msg.writeUInt16BE(parseInt("0x" + arg2Array[1].slice(0, 4)), 14); // id
+                                        msg.writeUInt32BE(parseInt("0x" + arg2Array[0].slice(0, 8)), 16); // ctx
+                                        msg.writeUInt8(parseInt("0x" + arg2Array[2].slice(0, 2)), 20); // type
+                                        msg.fill(0, 21); // filler
+                                    }
                                     var header = Buffer.alloc(8);
                                     header.writeUInt32BE(12, 0);
-                                    header.writeUInt8(83, 4);
+                                    header.writeUInt8(83, 4); //TMNET_MSG_TYPE_GET_RESOURCE = 83
                                     header.fill(0, 5);
                                     appxprocessor.curresourcelistOut[argsArray[0]] = argsArray[1];
                                     appxprocessor.curresourcecountOut++;
@@ -1155,6 +1174,7 @@ function APPXProcessor(ws, id) {
     self.chunksReceived = 0;
     self.serverFeatureMask = 0;
     self.serverExtendedFeatureMask = 0;
+    self._APPX64 = false;
     self.curresourceIn = null;
     self.curresourcelistOut = {};
     self.curresourcelistIn = {};
@@ -1280,7 +1300,7 @@ function APPXProcessor(ws, id) {
                         this.appxsendfilehandler();
                         break;
                     }
-                case 72: //TAddField.type
+                case 72: //TAddField.type (TMNET_MSG_TYPE_ADD_FIELD)
                     { // ITEMS
                         this.appxitemshandler();
                         break;
@@ -1700,7 +1720,10 @@ function APPXProcessor(ws, id) {
         this.rtndata = this.rtndata.slice(4, this.rtndata.length);
 
         this.serverExtendedFeatureMask = new DataView(new Uint8Array(bytes).buffer).getUint32(0);
-
+        if((this.serverExtendedFeatureMask & TMNET_FEATURE2_APPX64_BIT) ==  TMNET_FEATURE2_APPX64_BIT){
+            this._APPX64 = true;
+            logactivity("Appx Engine is 64-bit");
+        }
         var ms = new Message();
         ms.data = this.serverExtendedFeatureMask;
         ms.hasdata = "yes";
@@ -2680,7 +2703,7 @@ function APPXProcessor(ws, id) {
 
     // PROC STACK Handler - 93
     this.appxprocstackhandler = function APPXProcessor_appxprocstackhandler() {
-        logactivity("***** SOCKET_PROC STACK *****, step=" + this.curhandlerstep);
+        logactivity("***** SOCKET_PROC STACK 64-bit="+this._APPX64+" *****, step=" + this.curhandlerstep);
 
         var done = false;
 
@@ -2689,20 +2712,40 @@ function APPXProcessor(ws, id) {
                 if (this.procstack)
                     this.procstacklast = JSON.parse(JSON.stringify(this.procstack));
                 this.procstack = {};
-                this.needbytes = 4;
+                if(this._APPX64){
+                    this.needbytes = 8;
+                }
+                else{
+                    this.needbytes = 4;
+                }
                 this.curhandlerstep = 1;
                 break;
 
             case 1: // Process a PCB
-                var rawdata = this.rtndata.slice(0, 4);
-                this.rtndata = this.rtndata.slice(4, this.rtndata.length);
-                var pcb = new DataView(new Uint8Array(rawdata).buffer).getUint32(0);
-                if (pcb == 0) {
+                var pcb = 0;
+                if(this._APPX64){
+                    var rawdata = this.rtndata.slice(0, 8);
+                    this.rtndata = this.rtndata.slice(8, this.rtndata.length);
+                    var dw = new DataView(new Uint8Array(rawdata).buffer);
+                    pcb = dw.getBigUint64(0).toString();
+                }
+                else{
+                    var rawdata = this.rtndata.slice(0, 4);
+                    this.rtndata = this.rtndata.slice(4, this.rtndata.length);
+                    pcb = new DataView(new Uint8Array(rawdata).buffer).getUint32(0);
+                }
+
+                if (pcb == 0 || pcb == "0") {
                     done = true;
                 }
                 else {
                     this.procstack[pcb] = true;
-                    this.needbytes = 4;
+                    if(this._APPX64){
+                        this.needbytes = 8;
+                    }
+                    else{
+                        this.needbytes = 4;
+                    }
                     this.curhandlerstep = 1;
                 }
                 break;
@@ -2802,14 +2845,27 @@ function APPXProcessor(ws, id) {
         switch (this.curhandlerstep) {
             case 0: // set up to read an item block from the server
                 this.items = [];
-                this.needbytes = 12;
+                //From release 6.1 we started sending 20 bytes
+                if((this.serverExtendedFeatureMask & TMNET_FEATURE2_LARGE_WORK_FIELD) == TMNET_FEATURE2_LARGE_WORK_FIELD){
+                    this.needbytes = 20; 
+                }
+                else{
+                    this.needbytes = 12;
+                }
                 this.curhandlerstep = 1;
                 break;
             case 1: // Trim off item block just read and process it and setup to read data if any
                 var itm = new item();
-                itm.struct = this.rtndata.slice(0, 12);
-                this.rtndata = this.rtndata.slice(12, this.rtndata.length);
-                this.needbytes = new DataView(new Uint8Array(itm.struct.slice(10, 12)).buffer).getUint16(0);
+                if((this.serverExtendedFeatureMask & TMNET_FEATURE2_LARGE_WORK_FIELD) == TMNET_FEATURE2_LARGE_WORK_FIELD){
+                    itm.struct = this.rtndata.slice(0, 20);
+                    this.rtndata = this.rtndata.slice(20, this.rtndata.length);
+                    this.needbytes = new DataView(new Uint8Array(itm.struct.slice(12, 16)).buffer).getUint32(0); 
+                }
+                else{
+                    itm.struct = this.rtndata.slice(0, 12);
+                    this.rtndata = this.rtndata.slice(12, this.rtndata.length);
+                    this.needbytes = new DataView(new Uint8Array(itm.struct.slice(10, 12)).buffer).getUint16(0);
+                }
                 this.items.push(itm);
 
                 if (this.needbytes == 0) {
@@ -2832,7 +2888,7 @@ function APPXProcessor(ws, id) {
                 var itm = this.items[this.items.length - 1];
                 itm.data = this.rtndata.slice(0, this.needbytes);
                 this.rtndata = this.rtndata.slice(this.needbytes, this.rtndata.length);
-                if ((itm.struct[9] & 0x02) == 0x02) {
+                if ((itm.struct[9] & FLD_SPEC_TOKEN) == FLD_SPEC_TOKEN) {
                     //token field, these bytes contain cachid for token field data
                     this.needbytes = 24;
                     this.curhandlerstep = 3;
@@ -2900,7 +2956,13 @@ function APPXProcessor(ws, id) {
                 allDone = true;
             }
             else {
-                this.needbytes = 12;
+                //From release 6.1 we started sending 20 bytes
+                if((this.serverExtendedFeatureMask & TMNET_FEATURE2_LARGE_WORK_FIELD) == TMNET_FEATURE2_LARGE_WORK_FIELD){
+                    this.needbytes = 20; 
+                }
+                else{
+                    this.needbytes = 12;
+                }
                 this.curhandlerstep = 1;
             }
         }
@@ -2924,6 +2986,13 @@ function APPXProcessor(ws, id) {
                 itm.options = item.struct[7];
                 itm.type = item.struct[8];
                 itm.special = item.struct[9];
+                //from release 6.1 we satrted sending item MaxLen so we can support larger fields
+                if((this.serverExtendedFeatureMask & TMNET_FEATURE2_LARGE_WORK_FIELD) == TMNET_FEATURE2_LARGE_WORK_FIELD){
+                    itm.maxLen = new DataView(new Uint8Array(item.struct.slice(16, 20)).buffer).getUint32(0); 
+                }
+                else{
+                    itm.maxLen = 0;
+                }
 
                 /*sometimes we need the raw data when low order bits are used to
 		**delimit data like formatted fields and date pickers that don't 
@@ -2938,7 +3007,7 @@ function APPXProcessor(ws, id) {
                 }
 
                 //check itm.special for tokendata
-                if ((itm.special & 0x02) == 0x02) {
+                if ((itm.special & FLD_SPEC_TOKEN) == FLD_SPEC_TOKEN) {
                     itm.tokendata = item.tokendata;
                     itm.token_cacheid = ab2str(itm.tokendata.slice(0, 8)).trim();
                     itm.token_cache_sig = ab2str(itm.tokendata.slice(8, 16)).trim();
@@ -3804,28 +3873,24 @@ function appxTableDataHandler() {
     var self = this;
 
     self.clearCollections = function appxTableDataHandler_clearCollections(coll, res) {
+        /*clear mongo data for this session*/
         try {
-            mongoCacheDb.collection(coll + ".files.chunks", { strict: true }, function mongoCacheDb_collectionCallback(err, collection) {
+            mongoCacheDb.collection(coll , { strict: true }, function mongoCacheDb_collectionCallback(err, collection) {
                 if (err && err.message.indexOf("does not exist") === -1) {
-                    dlog("clearCollections db.collection error--files: " + err);
+                    dlog("clearCollections db.collection error: " + err);
                 }
                 if (collection) {
-                    var gb = new GridFSBucket(mongoCacheDb, { bucketName: coll + ".files" });
+                    /*clear the data for downloaded/uploaded files (collectionName.file and collectionname.chunk)*/
+                    var gb = new GridFSBucket(mongoCacheDb, { bucketName: coll});
                     gb.drop(function gb_drop(err) {
                         if (err) {
-                            dlog("clearCollections gb.drop error: " + err);
+                            dlog("clearCollections "+coll+" gb.drop error: " + err);
                         }
                     });
-                }
-            });
-            mongoCacheDb.collection(coll, { strict: true }, function mongoCacheDb_collectionCallback(err, collection) {
-                if (err && err.message.indexOf("does not exist") === -1) {
-                    dlog("clearCollections db.collection error--collection: " + err);
-                }
-                if (collection) {
+                    /*delete the table data*/
                     collection.drop(function collection_drop(err, result) {
                         if (err) {
-                            dlog("clearCollections collection.drop error: " + err);
+                            dlog("clearCollections "+coll+" collection.drop error: " + err);
                         }
                     });
                 }

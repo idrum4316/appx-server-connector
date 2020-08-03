@@ -7,7 +7,7 @@
  **
  *********************************************************************/
 
-// what_str =  "@(#)Appx $Header: /src/cvs/appxHtml5/server/appx-client-setfield.js,v 1.11 2019/05/13 13:01:20 pete Exp $";
+// what_str =  "@(#)Appx $Header$";
 
 function appxsetfieldhandler(x) {
     setfield(x);
