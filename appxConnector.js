@@ -1,7 +1,7 @@
 "use strict";
 
-const serverConnectorVersionStr = "6.0.0.20072712";
-const serverConnectorVersionNum = 60000.20072712;
+const serverConnectorVersionStr = "6.0.0.20092501";
+const serverConnectorVersionNum = 60000.20092501;
 
 const cluster = require('cluster');
 const os = require('os');
@@ -588,9 +588,10 @@ function createWebSocket() {
 								});
 								//created and send login to APPX
 								appxprocessor.uid = ab2str(ms.args[2]);
-								var tlogin = Buffer.alloc(331);
-								tlogin.write(ms.args[2]);
-								tlogin.write(ms.args[3], 21);
+                                var tlogin = Buffer.alloc(331);
+                                /*first 20 characters are username followed by null and 20 characters of password*/
+								tlogin.write(ms.args[2], 0, 20);
+								tlogin.write(ms.args[3], 21, 20);
 								client_appx_socket.write(tlogin);
 								appxprocessor.cacheCollection = ms.args[0] + "_" + ms.args[1];
 								appxprocessor.hostCollection = ms.args[0] + "/" + ms.args[1];
@@ -680,9 +681,10 @@ function createWebSocket() {
 									logactivity("CONNECTED TO " + ms.args[0] + ":" + ms.args[1]);
 								});
 								//created and send login to APPX
-								var tlogin = Buffer.alloc(331);
-								tlogin.write(ms.args[2]);
-								tlogin.write(ms.args[3], 21);
+                                var tlogin = Buffer.alloc(331);
+                                /*first 20 characters are username followed by null and 20 characters of password*/
+								tlogin.write(ms.args[2], 0, 20);
+								tlogin.write(ms.args[3], 21, 20);
 								//add 32 bytes for host and remap
 								if (ms.args.length > 4) {
 									if (ms.args[4]) {
@@ -4028,7 +4030,7 @@ function appxTableDataHandler() {
             sortcols.push(null); // selection column
             if (colsarray.length > 0) {
                 for (var i = 0; i < colsarray.length; i++) {
-                    var cleanName = colsarray[i][3].replace(/\'/g, "").replace(/\s/g, "_").replace(/\./g, "_").toLowerCase() + i;
+                    var cleanName = colsarray[i][3].replace(/\'/g, "").replace(/\s/g, "_").replace(/\./g, "_").replace(/\</g, "").replace(/\>/g, "").replace(/\//g, "_").toLowerCase() + i;
                     var sortType = "A";
                     switch (colsarray[i][4]) {
                         case "java.lang.Integer": 

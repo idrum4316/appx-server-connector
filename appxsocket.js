@@ -397,14 +397,14 @@ Appx.prototype.login = function (callback) {
 			logWithID(debugConfig.INFO, 'Sending login for user: ' + providerConfig.appxuser);
 
 		tlogin.fill();
-
+		/*first 20 characters are username followed by null and 20 characters of password*/
 		if (providerConfig.enablessl) {
-			tlogin.write(instance.appxUser);
-			tlogin.write(instance.appxPswd, 21);
+			tlogin.write(instance.appxUser, 0 , 20);
+			tlogin.write(instance.appxPswd, 21, 20);
 		}
 		else {
-			tlogin.write(providerConfig.appxuser);
-			tlogin.write(providerConfig.appxpass, 21);
+			tlogin.write(providerConfig.appxuser, 0, 20);
+			tlogin.write(providerConfig.appxpass, 21, 20);
 		}
 		
 		if (providerConfig.runApplication != null) {
@@ -831,14 +831,14 @@ Appx.prototype.send = function (sendMessage, sendCallback) {
 			logWithID(debugConfig.INFO, 'Sending login for user: ' + providerConfig.appxuser);
 
 		tlogin.fill();
-
+		/*first 20 characters are username followed by null and 20 characters of password*/
 		if (providerConfig.enablessl) {
-			tlogin.write(instance.appxUser);
-			tlogin.write(instance.appxPswd, 21);
+			tlogin.write(instance.appxUser, 0, 20);
+			tlogin.write(instance.appxPswd, 21, 20);
 		}
 		else {
-			tlogin.write(providerConfig.appxuser);
-			tlogin.write(providerConfig.appxpass, 21);
+			tlogin.write(providerConfig.appxuser, 0, 20);
+			tlogin.write(providerConfig.appxpass, 21, 20);
 		}
 
 		if (extra) {

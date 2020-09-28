@@ -27,6 +27,9 @@ function enterAltCtrlTextBreak(ke) {
     if (ke != null && (ke.which == 10 || ke.which == 13) && ke.target.type == "textarea") {
         if ((appx_session.getProp("textReverseEnterKey") == true && !(ke.altKey || ke.ctrlKey || ke.shiftKey)) ||
             (appx_session.getProp("textReverseEnterKey") == false && (ke.altKey || ke.ctrlKey || ke.shiftKey))) {
+            /* Bug #4512
+            ** why do we need to manually insert linefeed? html already does that and it results in double linefeed
+            ** Note: if you disbale the defult behavior then on key pause event does not fire when you add linefeed
             var txt = ke.target;
             var val = txt.value;
             if (typeof txt.selectionStart == "number" && typeof txt.selectionEnd == "number") {
@@ -40,7 +43,7 @@ function enterAltCtrlTextBreak(ke) {
                 range.text = "\r\n";
                 range.collapse(false);
                 range.select();
-            }
+            }*/
             return true;
         }
     }

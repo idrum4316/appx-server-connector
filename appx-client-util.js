@@ -617,7 +617,9 @@ function invalidTableData() {
 **invalid characters input for the chosen encoding
 */
 function appxEncodingError(encoding) {
-    alert(appx_session.language.alerts.encodingFrontError + encoding + appx_session.language.alerts.encodingBackError);
+    var message = appx_session.language.alerts.encodingFrontError + encoding + appx_session.language.alerts.encodingBackError;
+    //alert(message);
+    appxSetStatusText(message, 2);
 }
 
 /*

@@ -13,8 +13,8 @@
 // thinking maybe allow to download and save a backup, and a way to upload and
 // set options from a backup
 
-var appxServerClientVersionStr = "6.0.0.20072712";
-var appxServerClientVersionNum = 60000.20072712;
+var appxServerClientVersionStr = "6.0.0.20092501";
+var appxServerClientVersionNum = 60000.20092501;
 
 var appxSortedOptions = {};
 var appxSortedOptionsArray = [];
@@ -168,7 +168,7 @@ appx_session.loadOptions = function () {
         appx_session.fileseparatorchar = "\\";
     appx_session.options = {};
     var options = [
-        //           Section, Tag, Hidden?, Edit@RT, AutoSave, ForceSave, ExpandString, CreatePath, Datatype, DataList, Value, Default, OldTag, OldValue, Description, Show/Send to engine
+        //           Section, Tag, Hidden?, Edit@RT, AutoSave, ForceSave, ExpandString, CreatePath, Datatype, DataList, Value, Default, OldTag, OldValue, Description, Show/Send to engine (Read Only)
         {
             "prop": ["HTML5", "[HTML5]", true, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {
@@ -228,7 +228,7 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Options", "[Options]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {
-            //           Section, Tag, Hidden?, Edit@RT, AutoSave, ForceSave, ExpandString, CreatePath, Datatype, DataList, Value, Default, OldTag, OldValue, Description
+            //           Section, Tag, Hidden?, Edit@RT, AutoSave, ForceSave, ExpandString, CreatePath, Datatype, DataList, Value, Default, OldTag, OldValue, Description, Read Only
             "prop": ["Options", "gridVirtualScroll", false, true, true, false, false, false, "boolean", null, null, true, null, null, "Grids use virtual scrolling versus paging", false]
         }, {
             "prop": ["Options", "gridFilterToolbar", false, true, true, false, false, false, "boolean", null, null, false, null, null, "(Not Implemented) - Show grid filter toolbar", true]
@@ -253,7 +253,7 @@ appx_session.loadOptions = function () {
         }, {
             "prop": ["Options", "toolbarStyle", false, true, true, false, false, false, "string", iconStyleList, null, "Both", null, null, "(Not Implemented) - Toolbar Button Style", true]
         }, {
-            "prop": ["Options", "textReverseEnterKey", false, true, true, false, false, false, "boolean", null, null, false, null, null, "(Not Implemented) - Pressing ENTER in a Text Field performs a Newline only, Ctrl-Enter triggers button", true]
+            "prop": ["Options", "textReverseEnterKey", false, true, true, false, false, false, "boolean", null, null, false, null, null, "Pressing ENTER in a Text Field performs a Newline only, Ctrl-Enter triggers button", false]
         }, {
             "prop": ["Options", "hidePrefsMenuItem", false, false, true, false, false, false, "boolean", null, null, false, null, null, "(Not Implemented) - Hide the menu option to edit the preferences.ini file", true]
         }, {

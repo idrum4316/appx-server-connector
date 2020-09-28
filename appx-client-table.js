@@ -576,10 +576,12 @@ var AppxTable = /** @class */ (function () {
                     }
                     /*
                     * width can change but we don't want to save the preference only because the col width has changed
-                    if(newColModel[i].width != appxTable._tableData.colModel[i].width){
+                    * WHY? We need this for Bug #4741
+                    */
+                    if (newColModel[i].width != appxTable._tableData.colModel[i].width) {
                         diff = true;
                         break;
-                    }   */
+                    }
                     /*widget can hide column, user also can hide column. We need to eliminate the posibility of
                     * widget hiding the column. To do that we have oHidden property that saves the hidden property before
                     * widget has a chance to modify the hidden property of the column.  */
@@ -941,11 +943,14 @@ var AppxTable = /** @class */ (function () {
                 var widget = null;
                 var rowWidget = appxTable._tableData.rowWidget;
                 //if we have rowWidget use it otherwise user defaultRowWidget
-                if (rowWidget && rowWidget[rowId] && rowWidget[rowId][cm.name] && rowWidget[rowId][cm.name]["widget_data"]) {
-                    //convert widget_data to widget object
-                    rowWidget[rowId][cm.name]["widget"] = appxTableRowWidgetHandler(rowWidget[rowId][cm.name]["widget_data"]);
-                    //we don't need this anymore, so clear some memory
-                    rowWidget[rowId][cm.name]["widget_data"] = null;
+                if (rowWidget && rowWidget[rowId] && rowWidget[rowId][cm.name] && (rowWidget[rowId][cm.name]["widget_data"] || rowWidget[rowId][cm.name]["widget"])) {
+                    //if we haven't converted the widget data yet, convert it to widget object
+                    if (rowWidget[rowId][cm.name]["widget_data"]) {
+                        //convert widget_data to widget object
+                        rowWidget[rowId][cm.name]["widget"] = appxTableRowWidgetHandler(rowWidget[rowId][cm.name]["widget_data"]);
+                        //we don't need this anymore, so clear some memory
+                        rowWidget[rowId][cm.name]["widget_data"] = null;
+                    }
                     //use this to create cellAttr for this cell
                     widget = rowWidget[rowId][cm.name]["widget"];
                     var selected = false;
@@ -1284,6 +1289,10 @@ var AppxTable = /** @class */ (function () {
      */
     AppxTable.prototype._columnResized = function (elem, newWidth, index) {
         this._prefsData.colModel = $(elem).jqGrid("getGridParam", "colModel");
+        /* Bug #4741: After resize save the new size as original width so it can be saved in user pref*/
+        if (this._prefsData.colModel[index]) {
+            this._prefsData.colModel[index].widthOrg = newWidth;
+        }
     };
     /**
      * Name: GRID COMPLETE

@@ -1,7 +1,7 @@
 "use strict";
 
-var mongoConnectorVersionStr = "6.0.0.20072712";
-var mongoConnectorVersionNum = 60000.20072712;
+var mongoConnectorVersionStr = "6.0.0.20092501";
+var mongoConnectorVersionNum = 60000.20092501;
 
 const cluster = require('cluster');
 const os = require('os');
@@ -337,10 +337,10 @@ function workerCode() {
                 var collist = {};
                 var collistId2 = { id2: 1 };
                 var caseSort = message.caseSort == "true";
-                var collationOptions =  {};
+                var collationOptions =  { "locale": mongoLocale };
 
-                if( caseSort == false ) {
-                    collationOptions["locale"] = mongoLocale;
+                if( caseSort == true ) {
+                    collationOptions["locale"] = "simple";
                 }
 
                 if (collection !== undefined) {
@@ -603,10 +603,10 @@ function workerCode() {
                 var csvHeader = "";
                 //add collation 
                 var caseSort = message.caseSort == "true";
-                var collationOptions =  {};
+                var collationOptions =  { "locale": mongoLocale };
 
-                if( caseSort == false ) {
-                    collationOptions["locale"] = mongoLocale;
+                if( caseSort == true ) {
+                    collationOptions["locale"] = "simple";
                 }
                 //make sort column indexed so mongo doesnt overflow
                 collection.createIndex(sorter, { collation: collationOptions });
