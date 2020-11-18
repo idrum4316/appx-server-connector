@@ -13,8 +13,8 @@
 // thinking maybe allow to download and save a backup, and a way to upload and
 // set options from a backup
 
-var appxServerClientVersionStr = "6.0.0.20092501";
-var appxServerClientVersionNum = 60000.20092501;
+var appxServerClientVersionStr = "6.0.0.20111701";
+var appxServerClientVersionNum = 60000.20111701;
 
 var appxSortedOptions = {};
 var appxSortedOptionsArray = [];
@@ -276,6 +276,11 @@ appx_session.loadOptions = function () {
             "prop": ["Options", "doubleBufferScreen", true, false, true, false, false, false, "boolean", null, null, true, null, null, "Wait for images to load before showing screens", false] //##DELETEUSERPREFS##
         }, {
             "prop": ["Options", "useTableForScan", false, true, true, false, false, false, "boolean", null, null, false, null, null, "Use the scan screen with table widget", false]
+        }, {
+            "prop": ["ReportViewers", "[ReportViewers]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
+        }, {
+            //           Section, Tag, Hidden?, Edit@RT, AutoSave, ForceSave, ExpandString, CreatePath, Datatype, DataList, Value, Default, OldTag, OldValue, Description, Read Only
+            "prop": ["ReportViewers", "useAppxTxtReportViewer", false, true, true, false, false, false, "boolean", null, null, false, null, null, "Set this to true to view text reports inside of Appx instead of an external viewer program", false]
         }, {
             "prop": ["UIDefaults", "[UIDefaults]", false, false, false, false, false, false, "string", null, null, null, null, null, "", false]
         }, {

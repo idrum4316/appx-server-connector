@@ -88,9 +88,15 @@ function appxobjectinvokehandler(msg) {
                 if ((top + (len * 17)) > height) {
                     len = ((height - top) / 17);
                 }
+                //Bug #4404: unlock the screen so we can change the focus to the list
+                appxSetLocked(false);
                 $sel.appendTo(parent)
                     .attr('size', len)
-                    .blur(appxFireObjectEvent)
+                    .blur(function(){
+                        //Bug #4770: user didn't select anything, don't change the original value by sending 0
+                        appx_session.objFocus = $("<select>").val('0'); //fake it
+                        appxFireObjectEvent();
+                    })
                     .click(appxFireObjectEvent)
                     .css({
                         'position': 'absolute',
@@ -116,7 +122,6 @@ function appxobjectinvokehandler(msg) {
 
 function appxFireObjectEvent() {
     if (appx_session.objFocus && !appx_session.objEventFired) {
-        console.log(appx_session.objEventFired);
         appx_session.objEventFired = true;
         var val = appx_session.objFocus.val();
         appx_session.ws.send(JSON.stringify({

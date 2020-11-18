@@ -62,7 +62,7 @@ function appxcreateformatitem(item, el) {
  * @param {*} logic_value
  */
 function appxLogicToAlpha(logic){
-    /*Sanatize the value of checkbox*/
+    /*Sanitize the value of checkbox*/
     //Note: appx6 sends 4 characters ("Y   ") as the value, so we need to only check the first character until that gets resolved
     if(logic.charAt(0) == "y" || logic.charAt(0) == "Y" || logic.charAt(0) == "1"){
         return "Y";
@@ -192,7 +192,7 @@ function appxitemshandler(x) {
                     wt = WIDGET_TYPE_LABEL;
                     item.widget.wWidgetType = WIDGET_TYPE_LABEL;
                 }
-                else if (wt == WIDGET_TYPE_FILE_CHOOSER || wt == WIDGET_TYPE_DATE_CHOOSER || wt == WIDGET_TYPE_LISTBOX) {
+                else if (wt == WIDGET_TYPE_FILE_CHOOSER || wt == WIDGET_TYPE_DATE_CHOOSER || wt == WIDGET_TYPE_LISTBOX || wt == WIDGET_TYPE_COLOR_CHOOSER) {
                     item.widget.wLabel = null;
                     item.widget.wWidgetType = WIDGET_TYPE_RAW_TEXT;
                     //save the original type somewhere for further processing
@@ -386,8 +386,17 @@ function appxitemshandler(x) {
                 if (appx_session.lastOption && ( appx_session.lastOption === "333" || appx_session.lastOption === 333 ) && !($(this).is("input[type=checkbox]") || $(this).is(".checkbox-label")) ) {
                    this.selectionStart = this.selectionEnd = appx_session.keyPauseLastPosition;
                 } else {
-                    if (appx_session.getProp("autoSelect")) {
-                        $(this).select();
+                    //if colorpicker wrapper got the focus, shift the focus to colorpicker input
+                    if($(this).is(".appxcolorpickerwrapper")){
+                        $(this).find("input").focus();
+                        if (appx_session.getProp("autoSelect")) {
+                            $(this).find("input").select();
+                        }
+                    }
+                    else{
+                        if (appx_session.getProp("autoSelect")) {
+                            $(this).select();
+                        }
                     }
                 }
             });

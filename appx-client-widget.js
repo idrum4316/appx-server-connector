@@ -797,7 +797,8 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
         if ($tag.html() && wt != WIDGET_TYPE_DATE_CHOOSER) {
             var itemdata = $tag.html();
  // Bug #4438: need to synth non-modifiable checkmarks, so don't remove html if this is a check box widget
-            if (wt != WIDGET_TYPE_CHECK_BOX) {
+ // Also skip this if it is a color chooser
+            if (wt != WIDGET_TYPE_CHECK_BOX && wt != WIDGET_TYPE_COLOR_CHOOSER) {
                 $tag.html("");
             }
         }
@@ -1594,7 +1595,9 @@ function appxwidgetshandlerpropsex(wori, $tag, bTitlebar) {
         $tag.html("<legend align='" + align + "' class='" + classes + "'>" + wx.wLabel + "</legend>");
  // } else {
  // if checked and non-modifiable, then synthesize a checkbox to distinguish it from modifiable checkboxes per Bug #4438
-    } else if (wt != WIDGET_TYPE_CHECK_BOX ) {
+    } else if (wt === WIDGET_TYPE_COLOR_CHOOSER){
+        $tag.find("input").addClass("appx-data");
+    }else if (wt != WIDGET_TYPE_CHECK_BOX ) {
         var $box = $("<div>").addClass("appx--box"); //container
         $box.css({
             "width": "100%"
@@ -3054,6 +3057,7 @@ function createWidgetTagObject() {
             "top": "2px",
             "z-index": 100000
         });
+        cp.val(item.data);
         $tag.append(cp);
         $tag.append(ic);
         return $tag;

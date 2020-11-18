@@ -25,6 +25,9 @@ function setInputFocus($tag) {
     if ($($tag).hasClass("appxdatefield") && $($tag).find(".appxdatevalue")) {
         $tag = $($tag).find(".appxdatevalue");
     }
+    if ($($tag).hasClass("appxcolorpickerwrapper") && $($tag).find(".appxcolorpicker")) {
+        $tag = $($tag).find(".appxcolorpicker");
+    }
 
     $tag.focus();
 }
@@ -481,43 +484,101 @@ function appxApplyStylesColorPicker() {
         //may need to loop and get ids here;
         $.each($("#screenBuf .appxcolorpicker"), function $_each(i, el) {
             $(el).parent().width($(el).parent().width() + (appx_session.colWidthPx * 2) - 2);
-            $(el).colpick({
-                layout: 'hex',
-                submit: true,
-                colorScheme: 'light',
-                onChange: function $_colpick_onChange(hsb, hex, rgb, elc, bySetColor) {
-                    $(elc).css('border-color', '#' + hex);
-                    // Fill the text box just if the color was set using the picker, and not the colpickSetColor function.
-                    if (!bySetColor) $(elc).val(hex);
-                },
-                onSubmit: function $_colpick_onSubmit(hsb, hex, rgb, elc, bySetColor) {
-                    $(elc).parent().find("input").css({
-                        'border-color': '#' + hex,
-                        'background-color': '#' + hex
+            //set initial bg color base on the value if exists
+            var color = el.value.trim();
+            if(color.length >= 6){
+                if(color.substring(0,1) != '#'){
+                    color = "#"+color;
+                } 
+                $(this).css({
+                    'border-color': color,
+                    'background-color': color
+                });
+            }
+            //change the background color when the color is changed, also set the new color to colorpicker
+            $(el).change(function $_change() {
+                $(this).parent().find("img").colpickSetColor(this.value,this.value);
+                var color = this.value.trim();
+                if(color.length >= 6){
+                    if(color.substring(0,1) != '#'){
+                        color = "#"+color;
+                    } 
+                    $(this).css({
+                        'border-color': color,
+                        'background-color': color
                     });
-                    if (!bySetColor) $(elc).parent().find("input").val(hex);
-                    $(elc).colpickHide();
                 }
-            }).keyup(function $_keyup() {
-                $(this).colpickSetColor(this.value);
+            });
+            $(el).focus(function(){
+                if(appx_session.getProp("autoSelect")){
+                    $(this).select();
+                }
             });
             //icon click opens colorpicker
             $(el).parent().find("img").colpick({
                 layout: 'hex',
                 submit: true,
                 colorScheme: 'light',
+                color: el.value.trim().length == 0 ? 'ffffff':el.value.trim(),
+                /*Callback function triggered when the color is changed. This is the function that allows you to get the color picked by the user whenever 
+                  it changes, whithout the user pressing the OK button. Should receive:
+                    HSB object: (eg. {h:0, s:100, b:100})
+                    HEX string: (with no #)
+                    RGB object: (eg. {r:255, g:0, b:0})
+                    el element: the parent element on which colorpicker() was called. Use it to modify this parent element on change (see first example below).
+                    bySetColor flag: if true, the onChange callback was fired by the colpickSetColor function and not by the user changing the color directly 
+                                     in the picker. There are some cases in which you'll want a different behaviour in this case (see last example).
+                */
                 onChange: function $_colpick_onChange(hsb, hex, rgb, elc, bySetColor) {
-                    $(elc).parent().find("input").css('border-color', '#' + hex);
+                    $(elc).parent().find("input").css({
+                        'border-color': '#' + hex,
+                        'background-color': '#' +hex
+                    });
                     // Fill the text box just if the color was set using the picker, and not the colpickSetColor function.
-                    if (!bySetColor) $(elc).parent().find("input").val(hex);
+                    if (!bySetColor){
+                         $(elc).parent().find("input").val("#"+hex);
+                         $(elc).parent().addClass("dirty");
+                    }
                 },
                 onSubmit: function $_colpick_onSubmit(hsb, hex, rgb, elc, bySetColor) {
                     $(elc).parent().find("input").css({
                         'border-color': '#' + hex,
                         'background-color': '#' +hex
                     });
-                    if (!bySetColor) $(elc).parent().find("input").val(hex);
+                    if (!bySetColor){ 
+                        $(elc).parent().find("input").val("#"+hex);
+                        $(elc).parent().addClass("dirty");
+                    }
                     $(elc).colpickHide();
+                },
+                onBeforeShow: function $_colpickOnBoforeShow(elem){
+                    //set the current color value
+                    var currentValue = $(this).parent().find("input").val();
+                    currentValue = currentValue.trim().length == 0? "ffffff":currentValue;
+                    $(this).colpickSetColor(currentValue,currentValue);
+                },
+                onShow: function $_colpick_onShow(elem){
+                    //this is to prevent sending keys to appx while colpick is open
+                    var $elc = $(this);
+                    $(elem).keydown(function $_colpick_onKeyDown(e){
+                        //F8 and Escape to close the color chooser 
+                        if( e.key === "Escape" || e.key === "F8"){
+                            $elc.colpickHide();
+                        }
+                        //Enter will close the color chooser
+                        if(e.key === "Enter" ){
+                            $elc.colpickHide();
+                        }
+                        e.stopPropagation();
+                    });
+                    //set the focuse to the hex feild on the popup. This is needed to intercept all the keydown events
+                    setTimeout( function(){
+                        //we have to do it this way, because the element is not added to the screen yet
+                        var $hexTextField = $("#"+elem.id +" > .colpick_hex_field > input");
+                        $hexTextField.focus();
+                        $hexTextField.select();
+                        }
+                        ,1);
                 }
             });
         });
@@ -623,7 +684,7 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                 var config = {};
                 config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
                 if (config.customConfig === undefined) {
-                    config.customConfig = '../custom/appx-ckeditor-config.js';
+                    config.customConfig = '../../custom/appx-ckeditor-config.js';
                 }
                 config.wordcount = {
                     // Whether or not you want to show the Paragraphs Count
@@ -723,10 +784,11 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                 mainEditor.resetDirty();
 
                 $ckElement.addClass("button_cke");
-                var $ckeButton = $('<button>');
+                var $ckeButton = $('<button title="Launch a Full Featured HTML Editor">');
                 $ckeButton.attr("id", "CKE_Button");
                 $ckeButton.val("a");
-                $ckeButton.text("a");
+                $ckeButton.addClass("cke_fullscreen_button");
+                //$ckeButton.text(". ");
                 $ckeButton.click(function ckeButton_click() {
                     var $element = $ckElement;
                     var popup_height = tHeight;
@@ -748,7 +810,7 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                     var config = {};
                     config.customConfig = AppxResource.cache[$element.data("editorConfig")];
                     if (config.customConfig === undefined) {
-                        config.customConfig = '../custom/appx-ckeditor-config.js';
+                        config.customConfig = '../../custom/appx-ckeditor-config.js';
                     }
                     /* 
                     ** Add plugins to limit the number of characters user can add to html client 
@@ -850,7 +912,8 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                 $ckeButton.css({
                     "position": "absolute",
                     "top": tTop + "px",
-                    "left": (tLeft + tWidth + 5) + "px"
+                    "left": (tLeft + tWidth + 3) + "px",
+                    "z-index": $ckElement.css("z-index")
                 });
                 if ($ckElement.hasClass("button_cke") && $ckElement.hasClass("appx-modifiable")){
                     $ckeButton.appendTo($ckElement.parent());
@@ -864,7 +927,7 @@ function appxApplyStyleEditor(cacheIDorEl, cacheID) {
                 var editor = {};
                 config.customConfig = AppxResource.cache[$ckElement.data("editorConfig")];
                 if (config.customConfig === undefined) {
-                    config.customConfig = '../custom/appx-ckeditor-config.js';
+                    config.customConfig = '../../custom/appx-ckeditor-config.js';
                 }
                 config.wordcount = {
                     // Whether or not you want to show the Paragraphs Count
