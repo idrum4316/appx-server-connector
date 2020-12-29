@@ -1,7 +1,7 @@
 "use strict";
 
-const serverConnectorVersionStr = "6.0.0.20111701";
-const serverConnectorVersionNum = 60000.20111701;
+const serverConnectorVersionStr = "6.0.0.20122901";
+const serverConnectorVersionNum = 60000.20122901;
 
 const cluster = require('cluster');
 const os = require('os');

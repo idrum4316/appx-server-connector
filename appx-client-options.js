@@ -13,8 +13,8 @@
 // thinking maybe allow to download and save a backup, and a way to upload and
 // set options from a backup
 
-var appxServerClientVersionStr = "6.0.0.20111701";
-var appxServerClientVersionNum = 60000.20111701;
+var appxServerClientVersionStr = "6.0.0.20122901";
+var appxServerClientVersionNum = 60000.20122901;
 
 var appxSortedOptions = {};
 var appxSortedOptionsArray = [];
